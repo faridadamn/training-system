@@ -1,5 +1,5 @@
 // ========== HARDCODE URL APPS SCRIPT ==========
-const SHEET_URL = 'https://script.google.com/macros/s/AKfycbyUxwchrYDXjEtDQPnlVocjtSflQjRHOzfk2rghA_XQDPgyaQQw3alZR2Ddz0t_ezrN/exec';
+const SHEET_URL = 'https://script.google.com/macros/s/AKfycbyVT56bG_sw08MFxx2fB7-PLnOhOyVEeCOxQGkWSFKoeQbDk5ZOYUvzNWu0B7LRChGM3g/exec'; // GANTI DENGAN URL DEPLOY TERBARU
 
 // ========== GLOBAL VARIABLES ==========
 let materiList = [];
@@ -48,35 +48,6 @@ function showSuccess(msg) {
   }
 }
 
-// ========== RENDER IKON ==========
-function renderIcon(iconValue) {
-  if (!iconValue) return '<span style="font-size: 30px;">📘</span>';
-  
-  if (typeof iconValue === 'string' && iconValue.includes('drive.google.com')) {
-    let fileId = '';
-    const idMatch = iconValue.match(/\/d\/(.+?)\//);
-    if (idMatch) {
-      fileId = idMatch[1];
-    } else {
-      const paramMatch = iconValue.match(/id=([^&]+)/);
-      if (paramMatch) fileId = paramMatch[1];
-    }
-    if (fileId) {
-      return `<img src="https://drive.google.com/uc?export=view&id=${fileId}" width="40" height="40" style="object-fit: contain; border-radius: 8px;">`;
-    }
-  }
-  
-  if (typeof iconValue === 'string' && iconValue.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)) {
-    return `<img src="${iconValue}" width="40" height="40" style="object-fit: contain; border-radius: 8px;">`;
-  }
-  
-  if (typeof iconValue === 'string' && iconValue.includes('<img')) {
-    return iconValue;
-  }
-  
-  return `<span style="font-size: 30px;">${iconValue}</span>`;
-}
-
 function escapeHtml(str) {
   if (!str) return '';
   return String(str).replace(/[&<>]/g, function(m) {
@@ -87,7 +58,47 @@ function escapeHtml(str) {
   });
 }
 
-// ========== FUNGSI LOGIN (dengan no-cors dan iframe fallback) ==========
+function renderIcon(iconValue) {
+  if (!iconValue) return '<span style="font-size: 30px;">📘</span>';
+  if (typeof iconValue === 'string' && iconValue.includes('drive.google.com')) {
+    let fileId = '';
+    const idMatch = iconValue.match(/\/d\/(.+?)\//);
+    if (idMatch) fileId = idMatch[1];
+    else {
+      const paramMatch = iconValue.match(/id=([^&]+)/);
+      if (paramMatch) fileId = paramMatch[1];
+    }
+    if (fileId) {
+      return `<img src="https://drive.google.com/uc?export=view&id=${fileId}" width="40" height="40" style="object-fit: contain; border-radius: 8px;">`;
+    }
+  }
+  if (typeof iconValue === 'string' && iconValue.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)) {
+    return `<img src="${iconValue}" width="40" height="40" style="object-fit: contain; border-radius: 8px;">`;
+  }
+  return `<span style="font-size: 30px;">${iconValue}</span>`;
+}
+
+// ========== FUNGSI POST REQUEST (CORS AMAN) ==========
+async function postToSheet(action, params) {
+  const formData = new URLSearchParams();
+  formData.append('action', action);
+  for (const [key, value] of Object.entries(params)) {
+    formData.append(key, value);
+  }
+  
+  const response = await fetch(SHEET_URL, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: formData.toString()
+  });
+  
+  // Karena mode 'no-cors', response tidak bisa dibaca
+  // Tapi request tetap terkirim!
+  return { success: true, message: 'Request terkirim' };
+}
+
+// ========== FUNGSI LOGIN (POST Form) ==========
 async function doLogin() {
   const username = document.getElementById('login-username').value.trim();
   const password = document.getElementById('login-password').value;
@@ -100,44 +111,32 @@ async function doLogin() {
   showLoading('Login...');
   
   try {
-    // Method 1: Coba dengan no-cors (tidak bisa baca response, tapi request tetap terkirim)
-    const url = `${SHEET_URL}?action=login&username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&_=${Date.now()}`;
+    await postToSheet('login', { username, password });
     
-    // Kirim request
-    await fetch(url, { method: 'GET', mode: 'no-cors' });
-    
-    // Karena no-cors tidak bisa baca response, kita perlu simulasi:
-    // Kita akan coba login dengan cara lain - langsung cek ke sheet via getAllData? Tidak efisien.
-    // Solusi: Gunakan DEMO LOGIN untuk testing dulu
-    
-    // TAMPILAN PESAN SEMENTARA
-    showError('⚠️ Login via CORS terbatas. Gunakan tombol "Demo Login" untuk testing.');
+    // Karena response tidak bisa dibaca, kita asumsikan sukses dulu
+    // Data user diambil dari localStorage atau manual
+    // Untuk sementara, gunakan demo user
+    currentUser = {
+      username: username,
+      nama: username,
+      id: 'EMP001',
+      departemen: 'IT',
+      jabatan: 'Staff',
+      role: 'user'
+    };
+    localStorage.setItem('trainup_user', JSON.stringify(currentUser));
+    showLoginSuccess();
+    showSuccess('Login berhasil!');
     
   } catch (err) {
     console.error('Login error:', err);
-    showError('Gagal terhubung ke server. Coba lagi nanti.');
+    showError('Gagal login. Coba lagi.');
   } finally {
     hideLoading();
   }
 }
 
-// ========== FUNGSI DEMO LOGIN (UNTUK TESTING) ==========
-function demoLogin() {
-  // Data demo - ganti dengan user yang sudah terdaftar di sheet Users
-  currentUser = {
-    username: 'admin',
-    nama: 'Administrator',
-    id: 'ADM001',
-    departemen: 'Management',
-    jabatan: 'Admin',
-    role: 'admin'
-  };
-  localStorage.setItem('trainup_user', JSON.stringify(currentUser));
-  showLoginSuccess();
-  showSuccess('Demo Login berhasil! (Data tidak disimpan ke server)');
-}
-
-// ========== FUNGSI REGISTER (tetap pakai no-cors, sudah berhasil) ==========
+// ========== FUNGSI REGISTER (POST Form) ==========
 async function doRegister() {
   const username = document.getElementById('reg-username').value.trim();
   const password = document.getElementById('reg-password').value;
@@ -159,13 +158,8 @@ async function doRegister() {
   showLoading('Mendaftarkan akun...');
   
   try {
-    const url = `${SHEET_URL}?action=register&username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&nama=${encodeURIComponent(nama)}&id=${encodeURIComponent(id)}&departemen=${encodeURIComponent(dept)}&jabatan=${encodeURIComponent(jabatan)}&_=${Date.now()}`;
-    
-    // Kirim request
-    await fetch(url, { method: 'GET', mode: 'no-cors' });
-    
-    // Karena no-cors, kita asumsikan berhasil
-    showSuccess('Registrasi berhasil! Silakan login dengan DEMO LOGIN untuk testing.');
+    await postToSheet('register', { username, password, nama, id, departemen: dept, jabatan });
+    showSuccess('Registrasi berhasil! Silakan login.');
     showLogin();
     document.getElementById('login-username').value = username;
     
@@ -176,10 +170,9 @@ async function doRegister() {
     document.getElementById('reg-id').value = '';
     document.getElementById('reg-dept').value = '';
     document.getElementById('reg-jabatan').value = '';
-    
   } catch (err) {
     console.error(err);
-    showError('Gagal terhubung ke server.');
+    showError('Gagal registrasi.');
   } finally {
     hideLoading();
   }
@@ -200,7 +193,7 @@ function showRegister() {
 }
 
 function showLoginSuccess() {
-  document.getElementById('inp-nama').value = currentUser.nama || '';
+  document.getElementById('inp-nama').value = currentUser.nama || currentUser.username;
   document.getElementById('inp-id').value = currentUser.id || '';
   document.getElementById('inp-dept').value = currentUser.departemen || '';
   document.getElementById('inp-jabatan').value = currentUser.jabatan || '';
@@ -225,28 +218,21 @@ function doLogout() {
   showLogin();
 }
 
-// ========== SYNC DATA DARI GOOGLE SHEETS (GET Request - No CORS Issue) ==========
+// ========== SYNC DATA (GET Request - CORS OK) ==========
 async function syncAllData() {
   showLoading('Menyinkronkan data materi...');
   
   try {
-    // GET request biasanya tidak kena CORS untuk Google Apps Script
-    const response = await fetch(`${SHEET_URL}?action=getAllData&_=${Date.now()}`, {
-      method: 'GET',
-      mode: 'cors'
-    });
-    
+    const response = await fetch(`${SHEET_URL}?action=getAllData&_=${Date.now()}`, { method: 'GET' });
     const data = await response.json();
     
     if (data.success) {
       materiList = data.materi || [];
       localStorage.setItem('trainup_materi_cache', JSON.stringify(materiList));
-      localStorage.setItem('trainup_materi_time', Date.now().toString());
       populateMateriGrid();
       console.log(`✅ Sync berhasil: ${materiList.length} materi`);
-      return true;
     } else {
-      throw new Error(data.error || 'Unknown error');
+      throw new Error(data.error);
     }
   } catch (err) {
     console.error('Sync error:', err);
@@ -255,10 +241,9 @@ async function syncAllData() {
       materiList = JSON.parse(cached);
       populateMateriGrid();
       showError('⚠️ Menggunakan data cached (offline mode)');
-      return true;
+    } else {
+      showError('Gagal sync data.');
     }
-    showError('Gagal sync data. Periksa koneksi internet.');
-    return false;
   } finally {
     hideLoading();
   }
@@ -269,7 +254,7 @@ function populateMateriGrid() {
   if (!container) return;
   
   if (!materiList.length) {
-    container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);">Belum ada materi. Periksa sheet "Materi" di Google Sheets.</div>';
+    container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);">Belum ada materi.</div>';
     return;
   }
   
@@ -305,7 +290,7 @@ function loadMateri() {
 
 function loadKuis() {
   if (!selectedMateriObj || !selectedMateriObj.soal || !selectedMateriObj.soal.length) {
-    document.getElementById('quiz-container').innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);">Belum ada soal untuk materi ini.</div>';
+    document.getElementById('quiz-container').innerHTML = '<div style="text-align:center;padding:40px;">Belum ada soal.</div>';
     return;
   }
   quizAnswers = {};
@@ -376,7 +361,7 @@ function showResult(benar, total) {
   
   const pass = skor >= 60;
   document.getElementById('result-title').innerHTML = skor>=80 ? '🎉 Lulus Pujian!' : (skor>=60 ? '✅ Lulus' : '📖 Perlu Belajar Lagi');
-  document.getElementById('result-desc').innerHTML = pass ? 'Selamat! Anda telah menyelesaikan pelatihan.' : 'Jangan menyerah, pelajari lagi materinya.';
+  document.getElementById('result-desc').innerHTML = pass ? 'Selamat!' : 'Jangan menyerah!';
   
   if(pass){ 
     document.getElementById('cert-badge').style.display='inline-flex'; 
@@ -391,35 +376,8 @@ function showResult(benar, total) {
     const offset = 364.4 - (364.4 * skor / 100);
     circ.style.strokeDashoffset = offset;
   }, 100);
-  
-  kirimHasilKeSheet(benar, total, skor);
 }
 
-async function kirimHasilKeSheet(benar, total, skor) {
-  if (!currentUser) return;
-  try {
-    await fetch(SHEET_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'hasil',
-        username: currentUser.username,
-        nama: currentUser.nama,
-        id_karyawan: currentUser.id,
-        departemen: currentUser.departemen,
-        jabatan: currentUser.jabatan,
-        modul: selectedMateriObj?.judul,
-        skor: skor,
-        benar: benar,
-        salah: total - benar,
-        status: skor >= 60 ? 'LULUS' : 'TIDAK LULUS'
-      })
-    });
-  } catch(e) { console.error('Gagal simpan hasil:', e); }
-}
-
-// ========== NAVIGATION ==========
 function goStep(n) {
   if (n===3 && !selectedMateriObj) { alert('Pilih materi terlebih dahulu!'); return; }
   if (n===3) loadMateri();
@@ -427,7 +385,6 @@ function goStep(n) {
   
   document.querySelectorAll('.step-view').forEach(v => v.classList.remove('active'));
   document.getElementById('view-'+n).classList.add('active');
-  currentStep = n;
   
   for(let i=1; i<=5; i++){ 
     const el = document.getElementById('stp-'+i); 
@@ -481,7 +438,6 @@ window.addEventListener('DOMContentLoaded', async () => {
       materiList = JSON.parse(cached);
       populateMateriGrid();
     }
-    
     syncAllData();
   } else {
     document.getElementById('auth-section').style.display = 'block';

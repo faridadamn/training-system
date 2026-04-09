@@ -1,77 +1,123 @@
-// ========== DATA STORE ==========
+// ========== OPTIMASI: CACHE & LOADING ==========
 let materiList = [];
 let karyawanList = [];
 let selectedMateriObj = null;
 let currentStep = 1, quizAnswers = {}, quizSubmitted = false;
 let SHEET_URL = localStorage.getItem('trainup_sheet_url') || '';
+let isLoading = false;
 
-// ========== FUNGSI RENDER IKON ==========
+// Tampilkan loading state
+function showLoading(message = 'Memuat data...') {
+  const loader = document.getElementById('global-loader');
+  if (!loader) {
+    const div = document.createElement('div');
+    div.id = 'global-loader';
+    div.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);z-index:10000;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;';
+    div.innerHTML = `<div class="sync-spinner" style="width:40px;height:40px;"></div><div style="color:white;">${message}</div>`;
+    document.body.appendChild(div);
+  } else {
+    loader.style.display = 'flex';
+    loader.querySelector('div:last-child').textContent = message;
+  }
+}
+
+function hideLoading() {
+  const loader = document.getElementById('global-loader');
+  if (loader) loader.style.display = 'none';
+}
+
+// Render ikon (sama seperti sebelumnya)
 function renderIcon(iconValue) {
   if (!iconValue) return '<span style="font-size: 30px;">📘</span>';
-  
   if (iconValue.includes('drive.google.com')) {
     let fileId = '';
     const idMatch = iconValue.match(/\/d\/(.+?)\//);
-    if (idMatch) {
-      fileId = idMatch[1];
-    } else {
+    if (idMatch) fileId = idMatch[1];
+    else {
       const paramMatch = iconValue.match(/id=([^&]+)/);
       if (paramMatch) fileId = paramMatch[1];
     }
-    
     if (fileId) {
-      const directUrl = `https://drive.google.com/uc?export=view&id=${fileId}`;
-      return `<img src="${directUrl}" width="40" height="40" style="object-fit: contain; border-radius: 8px;">`;
+      return `<img src="https://drive.google.com/uc?export=view&id=${fileId}" width="40" height="40" style="object-fit: contain; border-radius: 8px;">`;
     }
   }
-  
-  if (iconValue.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i) || iconValue.includes('imgur.com') || iconValue.includes('cloudinary.com')) {
+  if (iconValue.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i) || iconValue.includes('imgur.com')) {
     return `<img src="${iconValue}" width="40" height="40" style="object-fit: contain; border-radius: 8px;">`;
   }
-  
-  if (iconValue.includes('<img')) {
-    return iconValue;
-  }
-  
   return `<span style="font-size: 30px;">${iconValue}</span>`;
 }
 
-// ========== SYNC DATA ==========
-async function syncAllData() {
-  if (!SHEET_URL) { alert('Masukkan URL Web App terlebih dahulu!'); return; }
+// ========== SYNC DENGAN CACHE ==========
+async function syncAllData(force = false) {
+  if (!SHEET_URL) {
+    alert('Masukkan URL Web App terlebih dahulu!');
+    return false;
+  }
   
-  const syncStatus = document.getElementById('karyawan-sync-status');
-  if(syncStatus) syncStatus.style.display = 'flex';
+  // Cek cache dulu (jika tidak force)
+  if (!force) {
+    const cached = localStorage.getItem('trainup_master_data');
+    const cachedTime = localStorage.getItem('trainup_master_time');
+    if (cached && cachedTime && (Date.now() - parseInt(cachedTime)) < 3600000) { // 1 jam cache
+      console.log('📦 Pakai cache');
+      const data = JSON.parse(cached);
+      karyawanList = data.karyawan || [];
+      materiList = data.materi || [];
+      populateKaryawanDropdown();
+      populateMateriGrid();
+      updateConfigStatus(true);
+      return true;
+    }
+  }
+  
+  showLoading('Menyinkronkan data dari Google Sheets...');
   
   try {
-    const response = await fetch(`${SHEET_URL}?action=getAllData`, { method: 'GET' });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // Timeout 15 detik
+    
+    const response = await fetch(`${SHEET_URL}?action=getAllData&_=${Date.now()}`, {
+      method: 'GET',
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    
     const data = await response.json();
     
     if (data.success) {
-      if (data.karyawan && data.karyawan.length) {
-        karyawanList = data.karyawan;
-        populateKaryawanDropdown();
-      }
-      if (data.materi && data.materi.length) {
-        materiList = data.materi;
-        populateMateriGrid();
-      }
+      karyawanList = data.karyawan || [];
+      materiList = data.materi || [];
+      
+      // Simpan ke cache
+      localStorage.setItem('trainup_master_data', JSON.stringify({ karyawan: karyawanList, materi: materiList }));
+      localStorage.setItem('trainup_master_time', Date.now().toString());
+      
+      populateKaryawanDropdown();
+      populateMateriGrid();
       updateConfigStatus(true);
       document.getElementById('cfg-status-txt').textContent = 'Data tersinkron';
-      alert(`Berhasil sync: ${karyawanList.length} karyawan, ${materiList.length} materi`);
+      alert(`✅ Berhasil sync: ${karyawanList.length} karyawan, ${materiList.length} materi`);
+      return true;
     } else {
-      alert('Gagal mengambil data: ' + (data.error || 'unknown'));
+      throw new Error(data.error || 'Unknown error');
     }
   } catch (err) {
-    console.error(err);
-    alert('Error sync data. Pastikan Web App sudah di-deploy dan mendukung GET request.');
+    console.error('Sync error:', err);
+    if (err.name === 'AbortError') {
+      alert('⏰ Timeout! Cek koneksi internet atau URL Web App.');
+    } else {
+      alert('❌ Gagal sync data. Pastikan Web App sudah di-deploy dan URL benar.');
+    }
+    return false;
   } finally {
-    if(syncStatus) syncStatus.style.display = 'none';
+    hideLoading();
   }
 }
 
+// ========== FUNGSI LAINNYA (sama seperti sebelumnya) ==========
 function populateKaryawanDropdown() {
   const select = document.getElementById('inp-nama-select');
+  if (!select) return;
   select.innerHTML = '<option value="">— Pilih Nama —</option>';
   karyawanList.forEach(k => {
     const option = document.createElement('option');
@@ -99,6 +145,7 @@ function populateKaryawanDropdown() {
 
 function populateMateriGrid() {
   const container = document.getElementById('materi-grid-container');
+  if (!container) return;
   if (!materiList.length) {
     container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);">Belum ada materi. Sinkronkan data terlebih dahulu.</div>';
     return;
@@ -108,12 +155,22 @@ function populateMateriGrid() {
     <div class="materi-card" onclick="pilihMateriObj(${idx})" data-idx="${idx}">
       <div class="materi-icon">${renderIcon(m.ikon)}</div>
       <div class="materi-info">
-        <div class="materi-title">${m.judul}</div>
-        <div class="materi-meta">${(m.deskripsi || '').substring(0, 40)}...</div>
+        <div class="materi-title">${escapeHtml(m.judul)}</div>
+        <div class="materi-meta">${escapeHtml((m.deskripsi || '').substring(0, 40))}...</div>
         <span class="materi-badge badge-blue">${m.soal ? m.soal.length : 0} soal</span>
       </div>
     </div>
   `).join('');
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/[&<>]/g, function(m) {
+    if (m === '&') return '&amp;';
+    if (m === '<') return '&lt;';
+    if (m === '>') return '&gt;';
+    return m;
+  });
 }
 
 function pilihMateriObj(idx) {
@@ -145,13 +202,13 @@ function loadKuis() {
     const optsHTML = s.opts.map((o, j) => `
       <div class="opt" onclick="pilihJawaban(${i}, ${j}, this)">
         <div class="opt-letter">${letters[j]}</div>
-        <span>${o}</span>
+        <span>${escapeHtml(o)}</span>
       </div>
     `).join('');
     container.innerHTML += `
       <div class="quiz-item" id="qi-${i}">
         <div class="q-num">SOAL ${i+1}</div>
-        <div class="q-text">${s.q}</div>
+        <div class="q-text">${escapeHtml(s.q)}</div>
         <div class="options" id="opts-${i}">${optsHTML}</div>
         <div class="q-feedback" id="fb-${i}"></div>
       </div>
@@ -196,7 +253,7 @@ function showResult(benar, total) {
   const namaSelect = document.getElementById('inp-nama-select');
   const nama = namaSelect.options[namaSelect.selectedIndex]?.value || 'Unknown';
   const dept = document.getElementById('inp-dept').value;
-  document.getElementById('result-nama-info').innerHTML = `${nama} · ${dept} · Modul: ${selectedMateriObj?.judul}`;
+  document.getElementById('result-nama-info').innerHTML = `${escapeHtml(nama)} · ${escapeHtml(dept)} · Modul: ${escapeHtml(selectedMateriObj?.judul)}`;
   document.getElementById('st-benar').textContent = benar;
   document.getElementById('st-salah').textContent = total - benar;
   document.getElementById('st-total').textContent = total;
@@ -259,7 +316,11 @@ function updateProgress() {
 
 function toggleCheck(el){ el.classList.toggle('checked'); }
 function cetakSertifikat(){ window.print(); }
-function resetApp(){ location.reload(); }
+function resetApp(){ 
+  localStorage.removeItem('trainup_master_data');
+  localStorage.removeItem('trainup_master_time');
+  location.reload(); 
+}
 
 function validateSheetUrlLive() {
   const url = document.getElementById('cfg-url-input').value.trim();
@@ -274,7 +335,7 @@ function simpanConfig() {
   SHEET_URL = val;
   localStorage.setItem('trainup_sheet_url', val);
   updateConfigStatus(true);
-  syncAllData();
+  syncAllData(true);
 }
 
 function updateConfigStatus(ok) {
@@ -291,8 +352,14 @@ function toggleConfig() {
   arrow.style.transform = isOpen ? 'rotate(180deg)' : 'rotate(0deg)';
 }
 
-window.addEventListener('DOMContentLoaded', () => {
-  if(SHEET_URL) { document.getElementById('cfg-url-input').value = SHEET_URL; updateConfigStatus(true); syncAllData(); }
-  else { populateMateriGrid(); }
+// Initial load
+window.addEventListener('DOMContentLoaded', async () => {
+  if(SHEET_URL) { 
+    document.getElementById('cfg-url-input').value = SHEET_URL; 
+    updateConfigStatus(true);
+    await syncAllData(false); // Pakai cache jika ada
+  } else { 
+    populateMateriGrid(); 
+  }
   document.getElementById('config-body').style.display = 'block';
 });

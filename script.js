@@ -1,23 +1,26 @@
-// ========== OPTIMASI: CACHE & LOADING ==========
+// ========== HARDCODE URL APPS SCRIPT ==========
+const SHEET_URL = 'https://script.google.com/macros/s/AKfycbw1YNt07oc2OSEv-r2EcSKfcHaPLhRENvChKEyG8uEDD-KUuLWkYZxIYGD51UjeeU4d6w/exec';
+
+// ========== DATA STORE ==========
 let materiList = [];
 let karyawanList = [];
 let selectedMateriObj = null;
 let currentStep = 1, quizAnswers = {}, quizSubmitted = false;
-let SHEET_URL = localStorage.getItem('trainup_sheet_url') || '';
 let isLoading = false;
 
 // Tampilkan loading state
 function showLoading(message = 'Memuat data...') {
-  const loader = document.getElementById('global-loader');
+  let loader = document.getElementById('global-loader');
   if (!loader) {
     const div = document.createElement('div');
     div.id = 'global-loader';
-    div.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);z-index:10000;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;';
-    div.innerHTML = `<div class="sync-spinner" style="width:40px;height:40px;"></div><div style="color:white;">${message}</div>`;
+    div.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:10000;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;';
+    div.innerHTML = `<div class="sync-spinner" style="width:48px;height:48px;border:3px solid rgba(255,255,255,0.3);border-top-color:#4f8ef7;border-radius:50%;animation:spin 0.8s linear infinite;"></div><div style="color:white;font-size:14px;">${message}</div>`;
     document.body.appendChild(div);
   } else {
     loader.style.display = 'flex';
-    loader.querySelector('div:last-child').textContent = message;
+    const msgDiv = loader.querySelector('div:last-child');
+    if (msgDiv) msgDiv.textContent = message;
   }
 }
 
@@ -26,14 +29,16 @@ function hideLoading() {
   if (loader) loader.style.display = 'none';
 }
 
-// Render ikon (sama seperti sebelumnya)
+// Render ikon (support gambar dari Google Drive)
 function renderIcon(iconValue) {
   if (!iconValue) return '<span style="font-size: 30px;">📘</span>';
-  if (iconValue.includes('drive.google.com')) {
+  
+  if (typeof iconValue === 'string' && iconValue.includes('drive.google.com')) {
     let fileId = '';
     const idMatch = iconValue.match(/\/d\/(.+?)\//);
-    if (idMatch) fileId = idMatch[1];
-    else {
+    if (idMatch) {
+      fileId = idMatch[1];
+    } else {
       const paramMatch = iconValue.match(/id=([^&]+)/);
       if (paramMatch) fileId = paramMatch[1];
     }
@@ -41,40 +46,35 @@ function renderIcon(iconValue) {
       return `<img src="https://drive.google.com/uc?export=view&id=${fileId}" width="40" height="40" style="object-fit: contain; border-radius: 8px;">`;
     }
   }
-  if (iconValue.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i) || iconValue.includes('imgur.com')) {
+  
+  if (typeof iconValue === 'string' && iconValue.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)) {
     return `<img src="${iconValue}" width="40" height="40" style="object-fit: contain; border-radius: 8px;">`;
   }
+  
+  if (typeof iconValue === 'string' && iconValue.includes('<img')) {
+    return iconValue;
+  }
+  
   return `<span style="font-size: 30px;">${iconValue}</span>`;
 }
 
-// ========== SYNC DENGAN CACHE ==========
-async function syncAllData(force = false) {
-  if (!SHEET_URL) {
-    alert('Masukkan URL Web App terlebih dahulu!');
-    return false;
-  }
-  
-  // Cek cache dulu (jika tidak force)
-  if (!force) {
-    const cached = localStorage.getItem('trainup_master_data');
-    const cachedTime = localStorage.getItem('trainup_master_time');
-    if (cached && cachedTime && (Date.now() - parseInt(cachedTime)) < 3600000) { // 1 jam cache
-      console.log('📦 Pakai cache');
-      const data = JSON.parse(cached);
-      karyawanList = data.karyawan || [];
-      materiList = data.materi || [];
-      populateKaryawanDropdown();
-      populateMateriGrid();
-      updateConfigStatus(true);
-      return true;
-    }
-  }
-  
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/[&<>]/g, function(m) {
+    if (m === '&') return '&amp;';
+    if (m === '<') return '&lt;';
+    if (m === '>') return '&gt;';
+    return m;
+  });
+}
+
+// ========== SYNC DATA DARI GOOGLE SHEETS ==========
+async function syncAllData() {
   showLoading('Menyinkronkan data dari Google Sheets...');
   
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000); // Timeout 15 detik
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
     
     const response = await fetch(`${SHEET_URL}?action=getAllData&_=${Date.now()}`, {
       method: 'GET',
@@ -88,15 +88,14 @@ async function syncAllData(force = false) {
       karyawanList = data.karyawan || [];
       materiList = data.materi || [];
       
-      // Simpan ke cache
+      // Simpan ke localStorage untuk下次加载更快
       localStorage.setItem('trainup_master_data', JSON.stringify({ karyawan: karyawanList, materi: materiList }));
       localStorage.setItem('trainup_master_time', Date.now().toString());
       
       populateKaryawanDropdown();
       populateMateriGrid();
-      updateConfigStatus(true);
-      document.getElementById('cfg-status-txt').textContent = 'Data tersinkron';
-      alert(`✅ Berhasil sync: ${karyawanList.length} karyawan, ${materiList.length} materi`);
+      
+      console.log(`✅ Sync berhasil: ${karyawanList.length} karyawan, ${materiList.length} materi`);
       return true;
     } else {
       throw new Error(data.error || 'Unknown error');
@@ -106,7 +105,19 @@ async function syncAllData(force = false) {
     if (err.name === 'AbortError') {
       alert('⏰ Timeout! Cek koneksi internet atau URL Web App.');
     } else {
-      alert('❌ Gagal sync data. Pastikan Web App sudah di-deploy dan URL benar.');
+      alert('❌ Gagal sync data: ' + err.message);
+    }
+    
+    // Coba pakai cache jika ada
+    const cached = localStorage.getItem('trainup_master_data');
+    if (cached) {
+      const cachedData = JSON.parse(cached);
+      karyawanList = cachedData.karyawan || [];
+      materiList = cachedData.materi || [];
+      populateKaryawanDropdown();
+      populateMateriGrid();
+      alert('⚠️ Menggunakan data cached (offline mode)');
+      return true;
     }
     return false;
   } finally {
@@ -114,7 +125,6 @@ async function syncAllData(force = false) {
   }
 }
 
-// ========== FUNGSI LAINNYA (sama seperti sebelumnya) ==========
 function populateKaryawanDropdown() {
   const select = document.getElementById('inp-nama-select');
   if (!select) return;
@@ -146,8 +156,9 @@ function populateKaryawanDropdown() {
 function populateMateriGrid() {
   const container = document.getElementById('materi-grid-container');
   if (!container) return;
+  
   if (!materiList.length) {
-    container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);">Belum ada materi. Sinkronkan data terlebih dahulu.</div>';
+    container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);">Belum ada materi. Periksa sheet "Materi" di Google Sheets.</div>';
     return;
   }
   
@@ -161,16 +172,6 @@ function populateMateriGrid() {
       </div>
     </div>
   `).join('');
-}
-
-function escapeHtml(str) {
-  if (!str) return '';
-  return str.replace(/[&<>]/g, function(m) {
-    if (m === '&') return '&amp;';
-    if (m === '<') return '&lt;';
-    if (m === '>') return '&gt;';
-    return m;
-  });
 }
 
 function pilihMateriObj(idx) {
@@ -192,7 +193,10 @@ function loadMateri() {
 }
 
 function loadKuis() {
-  if (!selectedMateriObj || !selectedMateriObj.soal) return;
+  if (!selectedMateriObj || !selectedMateriObj.soal || !selectedMateriObj.soal.length) {
+    document.getElementById('quiz-container').innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);">Belum ada soal untuk materi ini.</div>';
+    return;
+  }
   quizAnswers = {};
   quizSubmitted = false;
   const container = document.getElementById('quiz-container');
@@ -224,7 +228,7 @@ function pilihJawaban(qIdx, aIdx, el) {
 }
 
 function submitKuis() {
-  if (!selectedMateriObj) return;
+  if (!selectedMateriObj || !selectedMateriObj.soal) return;
   const total = selectedMateriObj.soal.length;
   const unanswered = selectedMateriObj.soal.filter((_, i) => quizAnswers[i] === undefined).length;
   if (unanswered > 0) { alert(`Masih ${unanswered} soal belum dijawab!`); return; }
@@ -271,7 +275,6 @@ function showResult(benar, total) {
 }
 
 async function kirimHasilKeSheet(benar, total, skor, nama, dept) {
-  if (!SHEET_URL) return;
   try {
     await fetch(SHEET_URL, {
       method: 'POST',
@@ -322,44 +325,11 @@ function resetApp(){
   location.reload(); 
 }
 
-function validateSheetUrlLive() {
-  const url = document.getElementById('cfg-url-input').value.trim();
-  const feedback = document.getElementById('url-feedback');
-  if(url && !url.startsWith('https://script.google.com/')) feedback.innerHTML = '❌ URL tidak valid';
-  else feedback.innerHTML = url ? '✅ Format URL valid' : '';
-}
-
-function simpanConfig() {
-  const val = document.getElementById('cfg-url-input').value.trim();
-  if(!val.startsWith('https://script.google.com/')) { alert('URL tidak valid'); return; }
-  SHEET_URL = val;
-  localStorage.setItem('trainup_sheet_url', val);
-  updateConfigStatus(true);
-  syncAllData(true);
-}
-
-function updateConfigStatus(ok) {
-  const dot = document.getElementById('cfg-dot'), txt = document.getElementById('cfg-status-txt');
-  if(ok && SHEET_URL) { dot.style.background='var(--green)'; txt.textContent='Tersambung'; }
-  else { dot.style.background='var(--amber)'; txt.textContent='Belum sinkron'; }
-}
-
-function toggleConfig() {
-  const body = document.getElementById('config-body');
-  const arrow = document.getElementById('config-arrow');
-  const isOpen = body.style.display !== 'none';
-  body.style.display = isOpen ? 'none' : 'block';
-  arrow.style.transform = isOpen ? 'rotate(180deg)' : 'rotate(0deg)';
-}
-
-// Initial load
+// Initial load - langsung sync dengan hardcode URL
 window.addEventListener('DOMContentLoaded', async () => {
-  if(SHEET_URL) { 
-    document.getElementById('cfg-url-input').value = SHEET_URL; 
-    updateConfigStatus(true);
-    await syncAllData(false); // Pakai cache jika ada
-  } else { 
-    populateMateriGrid(); 
-  }
-  document.getElementById('config-body').style.display = 'block';
+  // Sembunyikan config panel karena tidak perlu lagi
+  const configPanel = document.getElementById('config-panel');
+  if (configPanel) configPanel.style.display = 'none';
+  
+  await syncAllData();
 });

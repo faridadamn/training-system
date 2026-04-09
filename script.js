@@ -1,5 +1,5 @@
 // ========== HARDCODE URL APPS SCRIPT ==========
-const SHEET_URL = 'https://script.google.com/macros/s/AKfycbzutMyU_PSS1GqweglUs7AG-aMEANqASBAVZWrsp9ns0JFgEZx4P-lwnmEOyjDy3NQkbw/exec';
+const SHEET_URL = 'https://script.google.com/macros/s/AKfycbyeyQGJ47hQzSfzd20dz-VXUXIfU9C7LKQ5DzJ9tbu6BPQKTVaUoxF4UvVlfbE6C9uOtA/exec';
 
 // ========== GLOBAL VARIABLES ==========
 let materiList = [];
@@ -87,7 +87,7 @@ function escapeHtml(str) {
   });
 }
 
-// ========== LOGIN & REGISTER (FIX CORS) ==========
+// ========== FUNGSI LOGIN (GET Request) ==========
 async function doLogin() {
   const username = document.getElementById('login-username').value.trim();
   const password = document.getElementById('login-password').value;
@@ -100,92 +100,17 @@ async function doLogin() {
   showLoading('Login...');
   
   try {
-    // 🔥 FIX CORS: Gunakan mode 'no-cors' dan buat request dengan cara khusus
-    const response = await fetch(SHEET_URL, {
-      method: 'POST',
-      mode: 'no-cors',  // <-- INI PENTING!
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'login',
-        username: username,
-        password: password
-      })
-    });
+    // 🔥 Gunakan GET request (tidak kena CORS)
+    const url = `${SHEET_URL}?action=login&username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&_=${Date.now()}`;
+    const response = await fetch(url, { method: 'GET' });
+    const result = await response.json();
     
-    // Karena mode 'no-cors', response tidak bisa dibaca langsung
-    // Kita perlu simulasi response atau gunakan cara lain
-    // Untuk sementara, kita akan menggunakan GET method sebagai alternatif
-    
-    // ALTERNATIF: Gunakan JSONP atau redirect
-    // TAPI untuk kemudahan, kita akan coba dengan cara lain:
-    
-    // Buat form submission tersembunyi
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = SHEET_URL;
-    form.target = 'hiddenFrame';
-    form.style.display = 'none';
-    
-    const input1 = document.createElement('input');
-    input1.name = 'action';
-    input1.value = 'login';
-    const input2 = document.createElement('input');
-    input2.name = 'username';
-    input2.value = username;
-    const input3 = document.createElement('input');
-    input3.name = 'password';
-    input3.value = password;
-    
-    form.appendChild(input1);
-    form.appendChild(input2);
-    form.appendChild(input3);
-    document.body.appendChild(form);
-    
-    // Buat iframe untuk menerima response
-    let iframe = document.getElementById('hiddenFrame');
-    if (!iframe) {
-      iframe = document.createElement('iframe');
-      iframe.id = 'hiddenFrame';
-      iframe.name = 'hiddenFrame';
-      iframe.style.display = 'none';
-      document.body.appendChild(iframe);
-    }
-    
-    // Set timeout untuk response
-    const responsePromise = new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Timeout')), 10000);
-      
-      iframe.onload = () => {
-        clearTimeout(timeout);
-        try {
-          // Coba baca response dari iframe
-          const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-          const responseText = iframeDoc.body.innerText || iframeDoc.body.textContent;
-          if (responseText) {
-            const result = JSON.parse(responseText);
-            resolve(result);
-          } else {
-            reject(new Error('Empty response'));
-          }
-        } catch(e) {
-          reject(e);
-        }
-      };
-    });
-    
-    form.submit();
-    
-    const result = await responsePromise;
-    
-    // Cleanup
-    document.body.removeChild(form);
-    
-    if (result && result.success) {
+    if (result.success) {
       currentUser = result.data;
       localStorage.setItem('trainup_user', JSON.stringify(currentUser));
       showLoginSuccess();
     } else {
-      showError(result?.message || 'Login gagal!');
+      showError(result.message || 'Login gagal!');
     }
   } catch (err) {
     console.error('Login error:', err);
@@ -195,21 +120,7 @@ async function doLogin() {
   }
 }
 
-// Fungsi sementara untuk testing - langsung login tanpa server
-// HAPUS INI NANTI SETELAH CORS BERHASIL
-function demoLogin() {
-  currentUser = {
-    username: 'demo',
-    nama: 'User Demo',
-    id: 'DEMO001',
-    departemen: 'IT',
-    jabatan: 'Staff',
-    role: 'user'
-  };
-  localStorage.setItem('trainup_user', JSON.stringify(currentUser));
-  showLoginSuccess();
-}
-
+// ========== FUNGSI REGISTER (GET Request) ==========
 async function doRegister() {
   const username = document.getElementById('reg-username').value.trim();
   const password = document.getElementById('reg-password').value;
@@ -231,31 +142,32 @@ async function doRegister() {
   showLoading('Mendaftarkan akun...');
   
   try {
-    const response = await fetch(SHEET_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'register',
-        username: username,
-        password: password,
-        nama: nama,
-        id: id,
-        departemen: dept,
-        jabatan: jabatan,
-        role: 'user'
-      })
-    });
+    const url = `${SHEET_URL}?action=register&username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&nama=${encodeURIComponent(nama)}&id=${encodeURIComponent(id)}&departemen=${encodeURIComponent(dept)}&jabatan=${encodeURIComponent(jabatan)}&_=${Date.now()}`;
+    const response = await fetch(url, { method: 'GET' });
+    const result = await response.json();
     
-    showSuccess('Registrasi berhasil! Silakan login.');
-    showLogin();
-    document.getElementById('login-username').value = username;
+    if (result.success) {
+      showSuccess('Registrasi berhasil! Silakan login.');
+      showLogin();
+      document.getElementById('login-username').value = username;
+    } else {
+      showError(result.message || 'Registrasi gagal!');
+    }
   } catch (err) {
     console.error(err);
     showError('Gagal terhubung ke server.');
   } finally {
     hideLoading();
   }
+}
+
+// ========== FUNGSI SIMPAN HASIL (GET Request) ==========
+async function kirimHasilKeSheet(benar, total, skor) {
+  if (!currentUser) return;
+  try {
+    const url = `${SHEET_URL}?action=saveHasil&username=${encodeURIComponent(currentUser.username)}&nama=${encodeURIComponent(currentUser.nama)}&id_karyawan=${encodeURIComponent(currentUser.id)}&departemen=${encodeURIComponent(currentUser.departemen)}&jabatan=${encodeURIComponent(currentUser.jabatan)}&modul=${encodeURIComponent(selectedMateriObj?.judul)}&skor=${skor}&benar=${benar}&salah=${total - benar}&status=${skor >= 60 ? 'LULUS' : 'TIDAK LULUS'}&_=${Date.now()}`;
+    await fetch(url, { method: 'GET', mode: 'no-cors' });
+  } catch(e) { console.error('Gagal simpan hasil:', e); }
 }
 
 function showLogin() {

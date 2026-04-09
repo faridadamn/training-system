@@ -1,5 +1,5 @@
 // ========== HARDCODE URL APPS SCRIPT ==========
-const SHEET_URL = 'https://script.google.com/macros/s/AKfycbyVT56bG_sw08MFxx2fB7-PLnOhOyVEeCOxQGkWSFKoeQbDk5ZOYUvzNWu0B7LRChGM3g/exec'; // GANTI DENGAN URL DEPLOY TERBARU
+const SHEET_URL = 'https://script.google.com/macros/s/AKfycbyUxwchrYDXjEtDQPnlVocjtSflQjRHOzfk2rghA_XQDPgyaQQw3alZR2Ddz0t_ezrN/exec';
 
 // ========== GLOBAL VARIABLES ==========
 let materiList = [];
@@ -45,6 +45,8 @@ function showSuccess(msg) {
     successDiv.textContent = msg;
     successDiv.style.display = 'block';
     setTimeout(() => successDiv.style.display = 'none', 3000);
+  } else {
+    alert(msg);
   }
 }
 
@@ -86,54 +88,15 @@ async function postToSheet(action, params) {
     formData.append(key, value);
   }
   
-  const response = await fetch(SHEET_URL, {
+  await fetch(SHEET_URL, {
     method: 'POST',
     mode: 'no-cors',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: formData.toString()
   });
   
-  // Karena mode 'no-cors', response tidak bisa dibaca
-  // Tapi request tetap terkirim!
-  return { success: true, message: 'Request terkirim' };
-}
-
-// ========== FUNGSI LOGIN (POST Form) ==========
-async function doLogin() {
-  const username = document.getElementById('login-username').value.trim();
-  const password = document.getElementById('login-password').value;
-  
-  if (!username || !password) {
-    showError('Username dan password harus diisi!');
-    return;
-  }
-  
-  showLoading('Login...');
-  
-  try {
-    await postToSheet('login', { username, password });
-    
-    // Karena response tidak bisa dibaca, kita asumsikan sukses dulu
-    // Data user diambil dari localStorage atau manual
-    // Untuk sementara, gunakan demo user
-    currentUser = {
-      username: username,
-      nama: username,
-      id: 'EMP001',
-      departemen: 'IT',
-      jabatan: 'Staff',
-      role: 'user'
-    };
-    localStorage.setItem('trainup_user', JSON.stringify(currentUser));
-    showLoginSuccess();
-    showSuccess('Login berhasil!');
-    
-  } catch (err) {
-    console.error('Login error:', err);
-    showError('Gagal login. Coba lagi.');
-  } finally {
-    hideLoading();
-  }
+  // Request terkirim, response tidak bisa dibaca karena no-cors
+  return true;
 }
 
 // ========== FUNGSI REGISTER (POST Form) ==========
@@ -158,24 +121,87 @@ async function doRegister() {
   showLoading('Mendaftarkan akun...');
   
   try {
+    // Kirim ke Google Sheets
     await postToSheet('register', { username, password, nama, id, departemen: dept, jabatan });
-    showSuccess('Registrasi berhasil! Silakan login.');
-    showLogin();
-    document.getElementById('login-username').value = username;
     
-    // Kosongkan form register
-    document.getElementById('reg-username').value = '';
-    document.getElementById('reg-password').value = '';
-    document.getElementById('reg-nama').value = '';
-    document.getElementById('reg-id').value = '';
-    document.getElementById('reg-dept').value = '';
-    document.getElementById('reg-jabatan').value = '';
+    // Simpan ke localStorage untuk login otomatis
+    const newUser = {
+      username: username,
+      nama: nama,
+      id: id,
+      departemen: dept,
+      jabatan: jabatan,
+      role: 'user'
+    };
+    localStorage.setItem('trainup_user', JSON.stringify(newUser));
+    currentUser = newUser;
+    
+    showSuccess('Registrasi berhasil! Login otomatis...');
+    showLoginSuccess();
+    
   } catch (err) {
     console.error(err);
     showError('Gagal registrasi.');
   } finally {
     hideLoading();
   }
+}
+
+// ========== FUNGSI LOGIN (Cek localStorage) ==========
+async function doLogin() {
+  const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value;
+  
+  if (!username || !password) {
+    showError('Username dan password harus diisi!');
+    return;
+  }
+  
+  showLoading('Login...');
+  
+  // Cek di localStorage dulu (untuk user yang sudah register)
+  const savedUser = localStorage.getItem('trainup_user');
+  if (savedUser) {
+    const user = JSON.parse(savedUser);
+    if (user.username === username) {
+      currentUser = user;
+      showLoginSuccess();
+      showSuccess('Login berhasil!');
+      hideLoading();
+      return;
+    }
+  }
+  
+  // Jika tidak ditemukan, buat user sementara (untuk testing)
+  // Data tetap akan tersimpan di sheet saat register
+  currentUser = {
+    username: username,
+    nama: username,
+    id: 'EMP001',
+    departemen: 'IT',
+    jabatan: 'Staff',
+    role: 'user'
+  };
+  localStorage.setItem('trainup_user', JSON.stringify(currentUser));
+  showLoginSuccess();
+  showSuccess('Login berhasil (mode testing)');
+  
+  hideLoading();
+}
+
+// ========== DEMO LOGIN (Untuk testing tanpa register) ==========
+function demoLogin() {
+  currentUser = {
+    username: 'demo',
+    nama: 'Demo User',
+    id: 'DEMO001',
+    departemen: 'Information Technology',
+    jabatan: 'Staff',
+    role: 'user'
+  };
+  localStorage.setItem('trainup_user', JSON.stringify(currentUser));
+  showLoginSuccess();
+  showSuccess('Demo Login berhasil!');
 }
 
 function showLogin() {
@@ -254,7 +280,7 @@ function populateMateriGrid() {
   if (!container) return;
   
   if (!materiList.length) {
-    container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);">Belum ada materi.</div>';
+    container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);">Belum ada materi. Periksa sheet "Materi" di Google Sheets.</div>';
     return;
   }
   
@@ -290,7 +316,7 @@ function loadMateri() {
 
 function loadKuis() {
   if (!selectedMateriObj || !selectedMateriObj.soal || !selectedMateriObj.soal.length) {
-    document.getElementById('quiz-container').innerHTML = '<div style="text-align:center;padding:40px;">Belum ada soal.</div>';
+    document.getElementById('quiz-container').innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);">Belum ada soal untuk materi ini.</div>';
     return;
   }
   quizAnswers = {};
@@ -361,7 +387,7 @@ function showResult(benar, total) {
   
   const pass = skor >= 60;
   document.getElementById('result-title').innerHTML = skor>=80 ? '🎉 Lulus Pujian!' : (skor>=60 ? '✅ Lulus' : '📖 Perlu Belajar Lagi');
-  document.getElementById('result-desc').innerHTML = pass ? 'Selamat!' : 'Jangan menyerah!';
+  document.getElementById('result-desc').innerHTML = pass ? 'Selamat! Anda telah menyelesaikan pelatihan.' : 'Jangan menyerah, pelajari lagi materinya.';
   
   if(pass){ 
     document.getElementById('cert-badge').style.display='inline-flex'; 
@@ -385,6 +411,7 @@ function goStep(n) {
   
   document.querySelectorAll('.step-view').forEach(v => v.classList.remove('active'));
   document.getElementById('view-'+n).classList.add('active');
+  currentStep = n;
   
   for(let i=1; i<=5; i++){ 
     const el = document.getElementById('stp-'+i); 

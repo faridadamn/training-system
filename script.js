@@ -1,13 +1,14 @@
 // ========== HARDCODE URL APPS SCRIPT ==========
-const SHEET_URL = 'https://script.google.com/macros/s/AKfycbyUxwchrYDXjEtDQPnlVocjtSflQjRHOzfk2rghA_XQDPgyaQQw3alZR2Ddz0t_ezrN/exec';
+const SHEET_URL = 'https://script.google.com/macros/s/AKfycbw1YNt07oc2OSEv-r2EcSKfcHaPLhRENvChKEyG8uEDD-KUuLWkYZxIYGD51UjeeU4d6w/exec';
 
-// ========== GLOBAL VARIABLES ==========
+// ========== DATA STORE ==========
 let materiList = [];
 let karyawanList = [];
 let selectedMateriObj = null;
 let currentStep = 1, quizAnswers = {}, quizSubmitted = false;
+let isLoading = false;
 
-// ========== LOADING UTILITY ==========
+// Tampilkan loading state
 function showLoading(message = 'Memuat data...') {
   let loader = document.getElementById('global-loader');
   if (!loader) {
@@ -28,8 +29,33 @@ function hideLoading() {
   if (loader) loader.style.display = 'none';
 }
 
-function showError(msg) {
-  alert(msg);
+// Render ikon (support gambar dari Google Drive)
+function renderIcon(iconValue) {
+  if (!iconValue) return '<span style="font-size: 30px;">📘</span>';
+  
+  if (typeof iconValue === 'string' && iconValue.includes('drive.google.com')) {
+    let fileId = '';
+    const idMatch = iconValue.match(/\/d\/(.+?)\//);
+    if (idMatch) {
+      fileId = idMatch[1];
+    } else {
+      const paramMatch = iconValue.match(/id=([^&]+)/);
+      if (paramMatch) fileId = paramMatch[1];
+    }
+    if (fileId) {
+      return `<img src="https://drive.google.com/uc?export=view&id=${fileId}" width="40" height="40" style="object-fit: contain; border-radius: 8px;">`;
+    }
+  }
+  
+  if (typeof iconValue === 'string' && iconValue.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)) {
+    return `<img src="${iconValue}" width="40" height="40" style="object-fit: contain; border-radius: 8px;">`;
+  }
+  
+  if (typeof iconValue === 'string' && iconValue.includes('<img')) {
+    return iconValue;
+  }
+  
+  return `<span style="font-size: 30px;">${iconValue}</span>`;
 }
 
 function escapeHtml(str) {
@@ -42,66 +68,60 @@ function escapeHtml(str) {
   });
 }
 
-function renderIcon(iconValue) {
-  if (!iconValue) return '<span style="font-size: 30px;">📘</span>';
-  if (typeof iconValue === 'string' && iconValue.includes('drive.google.com')) {
-    let fileId = '';
-    const idMatch = iconValue.match(/\/d\/(.+?)\//);
-    if (idMatch) fileId = idMatch[1];
-    else {
-      const paramMatch = iconValue.match(/id=([^&]+)/);
-      if (paramMatch) fileId = paramMatch[1];
-    }
-    if (fileId) {
-      return `<img src="https://drive.google.com/uc?export=view&id=${fileId}" width="40" height="40" style="object-fit: contain; border-radius: 8px;">`;
-    }
-  }
-  return `<span style="font-size: 30px;">${iconValue}</span>`;
-}
-
-// ========== SYNC DATA ==========
+// ========== SYNC DATA DARI GOOGLE SHEETS ==========
 async function syncAllData() {
-  if (!SHEET_URL) { alert('Masukkan URL Web App terlebih dahulu!'); return; }
-  
-  const syncStatus = document.getElementById('karyawan-sync-status');
-  if(syncStatus) syncStatus.style.display = 'flex';
-  
-  showLoading('Menyinkronkan data...');
+  showLoading('Menyinkronkan data dari Google Sheets...');
   
   try {
-    const response = await fetch(`${SHEET_URL}?action=getAllData&_=${Date.now()}`, { method: 'GET' });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    
+    const response = await fetch(`${SHEET_URL}?action=getAllData&_=${Date.now()}`, {
+      method: 'GET',
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    
     const data = await response.json();
     
     if (data.success) {
       karyawanList = data.karyawan || [];
       materiList = data.materi || [];
       
+      // Simpan ke localStorage untuk下次加载更快
       localStorage.setItem('trainup_master_data', JSON.stringify({ karyawan: karyawanList, materi: materiList }));
+      localStorage.setItem('trainup_master_time', Date.now().toString());
       
       populateKaryawanDropdown();
       populateMateriGrid();
-      updateConfigStatus(true);
-      document.getElementById('cfg-status-txt').textContent = 'Data tersinkron';
-      alert(`✅ Berhasil sync: ${karyawanList.length} karyawan, ${materiList.length} materi`);
+      
+      console.log(`✅ Sync berhasil: ${karyawanList.length} karyawan, ${materiList.length} materi`);
+      return true;
     } else {
       throw new Error(data.error || 'Unknown error');
     }
   } catch (err) {
     console.error('Sync error:', err);
+    if (err.name === 'AbortError') {
+      alert('⏰ Timeout! Cek koneksi internet atau URL Web App.');
+    } else {
+      alert('❌ Gagal sync data: ' + err.message);
+    }
+    
+    // Coba pakai cache jika ada
     const cached = localStorage.getItem('trainup_master_data');
     if (cached) {
-      const data = JSON.parse(cached);
-      karyawanList = data.karyawan || [];
-      materiList = data.materi || [];
+      const cachedData = JSON.parse(cached);
+      karyawanList = cachedData.karyawan || [];
+      materiList = cachedData.materi || [];
       populateKaryawanDropdown();
       populateMateriGrid();
-      showError('⚠️ Menggunakan data cached (offline mode)');
-    } else {
-      showError('Gagal sync data. Periksa koneksi internet.');
+      alert('⚠️ Menggunakan data cached (offline mode)');
+      return true;
     }
+    return false;
   } finally {
     hideLoading();
-    if(syncStatus) syncStatus.style.display = 'none';
   }
 }
 
@@ -138,7 +158,7 @@ function populateMateriGrid() {
   if (!container) return;
   
   if (!materiList.length) {
-    container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);">Belum ada materi. Sinkronkan data terlebih dahulu.</div>';
+    container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);">Belum ada materi. Periksa sheet "Materi" di Google Sheets.</div>';
     return;
   }
   
@@ -237,30 +257,43 @@ function showResult(benar, total) {
   const namaSelect = document.getElementById('inp-nama-select');
   const nama = namaSelect.options[namaSelect.selectedIndex]?.value || 'Unknown';
   const dept = document.getElementById('inp-dept').value;
-  
   document.getElementById('result-nama-info').innerHTML = `${escapeHtml(nama)} · ${escapeHtml(dept)} · Modul: ${escapeHtml(selectedMateriObj?.judul)}`;
   document.getElementById('st-benar').textContent = benar;
   document.getElementById('st-salah').textContent = total - benar;
   document.getElementById('st-total').textContent = total;
   document.getElementById('score-val').textContent = skor;
-  
   const pass = skor >= 60;
   document.getElementById('result-title').innerHTML = skor>=80 ? '🎉 Lulus Pujian!' : (skor>=60 ? '✅ Lulus' : '📖 Perlu Belajar Lagi');
-  document.getElementById('result-desc').innerHTML = pass ? 'Selamat! Anda telah menyelesaikan pelatihan.' : 'Jangan menyerah, pelajari lagi materinya.';
-  
-  if(pass){ 
-    document.getElementById('cert-badge').style.display='inline-flex'; 
-    document.getElementById('btn-cetak').style.display='flex'; 
-  } else { 
-    document.getElementById('cert-badge').style.display='none'; 
-    document.getElementById('btn-cetak').style.display='none'; 
-  }
-  
+  if(pass){ document.getElementById('cert-badge').style.display='inline-flex'; document.getElementById('btn-cetak').style.display='flex'; }
+  else { document.getElementById('cert-badge').style.display='none'; document.getElementById('btn-cetak').style.display='none'; }
   setTimeout(() => {
     const circ = document.getElementById('score-circle');
     const offset = 364.4 - (364.4 * skor / 100);
     circ.style.strokeDashoffset = offset;
   }, 100);
+  kirimHasilKeSheet(benar, total, skor, nama, dept);
+}
+
+async function kirimHasilKeSheet(benar, total, skor, nama, dept) {
+  try {
+    await fetch(SHEET_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'hasil',
+        nama: nama,
+        id_karyawan: document.getElementById('inp-id').value,
+        departemen: dept,
+        jabatan: document.getElementById('inp-jabatan').value,
+        modul: selectedMateriObj?.judul,
+        skor: skor,
+        benar: benar,
+        salah: total - benar,
+        status: skor >= 60 ? 'LULUS' : 'TIDAK LULUS'
+      })
+    });
+  } catch(e) { console.error(e); }
 }
 
 function goStep(n) {
@@ -268,20 +301,11 @@ function goStep(n) {
   if (n===3 && !selectedMateriObj) { alert('Pilih materi!'); return; }
   if (n===3) loadMateri();
   if (n===4) loadKuis();
-  
-  document.querySelectorAll('.step-view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.step-view').forEach(v=>v.classList.remove('active'));
   document.getElementById('view-'+n).classList.add('active');
   currentStep = n;
-  
-  for(let i=1; i<=5; i++){ 
-    const el = document.getElementById('stp-'+i); 
-    if(el) {
-      el.classList.remove('active','done'); 
-      if(i < n) el.classList.add('done'); 
-      else if(i === n) el.classList.add('active');
-    }
-  }
-  window.scrollTo({top: 0, behavior: 'smooth'});
+  for(let i=1;i<=5;i++){ const el=document.getElementById('stp-'+i); el.classList.remove('active','done'); if(i<n) el.classList.add('done'); else if(i===n) el.classList.add('active'); }
+  window.scrollTo({top:0,behavior:'smooth'});
 }
 
 function updateProgress() {
@@ -289,51 +313,23 @@ function updateProgress() {
   if(!box) return;
   const ratio = box.scrollTop / (box.scrollHeight - box.clientHeight);
   const pct = Math.min(100, Math.round(ratio*100));
-  const progFill = document.getElementById('prog-fill');
-  const readPct = document.getElementById('read-pct');
-  if(progFill) progFill.style.width = pct+'%';
-  if(readPct) readPct.textContent = pct+'%';
+  document.getElementById('prog-fill').style.width = pct+'%';
+  document.getElementById('read-pct').textContent = pct+'%';
 }
 
 function toggleCheck(el){ el.classList.toggle('checked'); }
 function cetakSertifikat(){ window.print(); }
-function resetApp(){ location.reload(); }
-
-function validateSheetUrlLive() {
-  const url = document.getElementById('cfg-url-input').value.trim();
-  const feedback = document.getElementById('url-feedback');
-  if(url && !url.startsWith('https://script.google.com/')) feedback.innerHTML = '❌ URL tidak valid';
-  else feedback.innerHTML = url ? '✅ Format URL valid' : '';
+function resetApp(){ 
+  localStorage.removeItem('trainup_master_data');
+  localStorage.removeItem('trainup_master_time');
+  location.reload(); 
 }
 
-function simpanConfig() {
-  const val = document.getElementById('cfg-url-input').value.trim();
-  if(!val.startsWith('https://script.google.com/')) { alert('URL tidak valid'); return; }
-  localStorage.setItem('trainup_sheet_url', val);
-  location.reload();
-}
-
-function updateConfigStatus(ok) {
-  const dot = document.getElementById('cfg-dot'), txt = document.getElementById('cfg-status-txt');
-  if(ok && SHEET_URL) { dot.style.background='var(--green)'; txt.textContent='Tersambung'; }
-  else { dot.style.background='var(--amber)'; txt.textContent='Belum sinkron'; }
-}
-
-function toggleConfig() {
-  const body = document.getElementById('config-body');
-  const arrow = document.getElementById('config-arrow');
-  const isOpen = body.style.display !== 'none';
-  body.style.display = isOpen ? 'none' : 'block';
-  arrow.style.transform = isOpen ? 'rotate(180deg)' : 'rotate(0deg)';
-}
-
-window.addEventListener('DOMContentLoaded', () => {
-  if(SHEET_URL) { 
-    document.getElementById('cfg-url-input').value = SHEET_URL; 
-    updateConfigStatus(true); 
-    syncAllData(); 
-  } else { 
-    populateMateriGrid(); 
-  }
-  document.getElementById('config-body').style.display = 'block';
+// Initial load - langsung sync dengan hardcode URL
+window.addEventListener('DOMContentLoaded', async () => {
+  // Sembunyikan config panel karena tidak perlu lagi
+  const configPanel = document.getElementById('config-panel');
+  if (configPanel) configPanel.style.display = 'none';
+  
+  await syncAllData();
 });

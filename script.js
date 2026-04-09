@@ -1,5 +1,5 @@
 // ========== HARDCODE URL APPS SCRIPT ==========
-const SHEET_URL = 'https://script.google.com/macros/s/AKfycbw1YNt07oc2OSEv-r2EcSKfcHaPLhRENvChKEyG8uEDD-KUuLWkYZxIYGD51UjeeU4d6w/exec';
+const SHEET_URL = 'https://script.google.com/macros/s/AKfycbz9hyVyumbHsgsEjOh_TKN0y6MPq4EOb-YMvaInNe4bZNKfDcPSHnSHeOywJ-0DJQP3Zw/exec';
 
 // ========== GLOBAL VARIABLES ==========
 let materiList = [];

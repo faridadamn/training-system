@@ -3,9 +3,9 @@ const SHEET_URL = 'https://script.google.com/macros/s/AKfycbyUxwchrYDXjEtDQPnlVo
 
 // ========== GLOBAL VARIABLES ==========
 let materiList = [];
+let karyawanList = [];
 let selectedMateriObj = null;
 let currentStep = 1, quizAnswers = {}, quizSubmitted = false;
-let currentUser = null;
 
 // ========== LOADING UTILITY ==========
 function showLoading(message = 'Memuat data...') {
@@ -29,25 +29,7 @@ function hideLoading() {
 }
 
 function showError(msg) {
-  const errorDiv = document.getElementById('auth-error');
-  if (errorDiv) {
-    errorDiv.textContent = msg;
-    errorDiv.style.display = 'block';
-    setTimeout(() => errorDiv.style.display = 'none', 3000);
-  } else {
-    alert(msg);
-  }
-}
-
-function showSuccess(msg) {
-  const successDiv = document.getElementById('auth-success');
-  if (successDiv) {
-    successDiv.textContent = msg;
-    successDiv.style.display = 'block';
-    setTimeout(() => successDiv.style.display = 'none', 3000);
-  } else {
-    alert(msg);
-  }
+  alert(msg);
 }
 
 function escapeHtml(str) {
@@ -74,206 +56,81 @@ function renderIcon(iconValue) {
       return `<img src="https://drive.google.com/uc?export=view&id=${fileId}" width="40" height="40" style="object-fit: contain; border-radius: 8px;">`;
     }
   }
-  if (typeof iconValue === 'string' && iconValue.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)) {
-    return `<img src="${iconValue}" width="40" height="40" style="object-fit: contain; border-radius: 8px;">`;
-  }
   return `<span style="font-size: 30px;">${iconValue}</span>`;
 }
 
-// ========== FUNGSI POST REQUEST (CORS AMAN) ==========
-async function postToSheet(action, params) {
-  const formData = new URLSearchParams();
-  formData.append('action', action);
-
-  for (const [key, value] of Object.entries(params)) {
-    formData.append(key, value);
-  }
-
-  await fetch(SHEET_URL, {
-    method: 'POST',
-    mode: 'no-cors', // ✅ WAJIB
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded'
-    },
-    body: formData.toString()
-  });
-
-  // ⚠️ Tidak bisa baca response
-  return { success: true }; // anggap sukses
-}
-
-// ========== FUNGSI REGISTER (POST Form) ==========
-async function doRegister() {
-  const username = document.getElementById('reg-username').value.trim();
-  const password = document.getElementById('reg-password').value;
-  const nama = document.getElementById('reg-nama').value.trim();
-  const id = document.getElementById('reg-id').value.trim();
-  const dept = document.getElementById('reg-dept').value.trim();
-  const jabatan = document.getElementById('reg-jabatan').value.trim();
-  
-  if (!username || !password || !nama || !id || !dept || !jabatan) {
-    showError('Semua field harus diisi!');
-    return;
-  }
-  
-  if (password.length < 4) {
-    showError('Password minimal 4 karakter!');
-    return;
-  }
-  
-  showLoading('Mendaftarkan akun...');
-  
-  try {
-    // Kirim ke Google Sheets
-    await postToSheet('register', { username, password, nama, id, departemen: dept, jabatan });
-    
-    // Simpan ke localStorage untuk login otomatis
-    const newUser = {
-      username: username,
-      nama: nama,
-      id: id,
-      departemen: dept,
-      jabatan: jabatan,
-      role: 'user'
-    };
-    localStorage.setItem('trainup_user', JSON.stringify(newUser));
-    currentUser = newUser;
-    
-    showSuccess('Registrasi berhasil! Login otomatis...');
-    showLoginSuccess();
-    
-  } catch (err) {
-    console.error(err);
-    showError('Gagal registrasi.');
-  } finally {
-    hideLoading();
-  }
-}
-
-// ========== FUNGSI LOGIN (Cek localStorage) ==========
-async function doLogin() {
-  const usernameInput = document.getElementById('login-username');
-  const passwordInput = document.getElementById('login-password');
-
-  const username = usernameInput.value.trim();
-  const password = passwordInput.value;
-
-  // ✅ Validasi input
-  if (!username || !password) {
-    showError('Username dan password harus diisi!');
-    return;
-  }
-
-  // ✅ Disable tombol (anti spam klik)
-  const btn = document.querySelector('#login-form button');
-  if (btn) btn.disabled = true;
-
-  showLoading('Login...');
-
-  try {
-    // ⚠️ Blind request (tidak bisa baca response)
-    await postToSheet('login', { username, password });
-
-    // ✅ Simulasi login (karena no-cors)
-    const user = {
-      username: username,
-      nama: username.charAt(0).toUpperCase() + username.slice(1),
-      id: '',
-      departemen: '',
-      jabatan: '',
-      role: 'user',
-      loginTime: new Date().toISOString()
-    };
-
-    // ✅ Simpan user
-    currentUser = user;
-    localStorage.setItem('trainup_user', JSON.stringify(user));
-
-    // ✅ Bersihin input
-    usernameInput.value = '';
-    passwordInput.value = '';
-
-    // ✅ Update UI
-    showLoginSuccess();
-    showSuccess('Login berhasil! (mode offline)');
-
-  } catch (err) {
-    console.error('LOGIN ERROR:', err);
-    showError('Gagal koneksi ke server');
-  } finally {
-    hideLoading();
-    if (btn) btn.disabled = false;
-  }
-}
-function showLogin() {
-  document.getElementById('login-form').style.display = 'block';
-  document.getElementById('register-form').style.display = 'none';
-  document.getElementById('auth-error').style.display = 'none';
-  document.getElementById('auth-success').style.display = 'none';
-}
-
-function showRegister() {
-  document.getElementById('login-form').style.display = 'none';
-  document.getElementById('register-form').style.display = 'block';
-  document.getElementById('auth-error').style.display = 'none';
-  document.getElementById('auth-success').style.display = 'none';
-}
-
-function showLoginSuccess() {
-  document.getElementById('inp-nama').value = currentUser.nama || currentUser.username;
-  document.getElementById('inp-id').value = currentUser.id || '';
-  document.getElementById('inp-dept').value = currentUser.departemen || '';
-  document.getElementById('inp-jabatan').value = currentUser.jabatan || '';
-  
-  document.getElementById('user-nama-display').textContent = currentUser.nama || currentUser.username;
-  document.getElementById('user-role-display').textContent = currentUser.role || 'user';
-  document.getElementById('user-dept-display').textContent = currentUser.departemen || '';
-  
-  document.getElementById('auth-section').style.display = 'none';
-  document.getElementById('main-app').style.display = 'block';
-  
-  syncAllData();
-}
-
-function doLogout() {
-  localStorage.removeItem('trainup_user');
-  currentUser = null;
-  document.getElementById('auth-section').style.display = 'block';
-  document.getElementById('main-app').style.display = 'none';
-  document.getElementById('login-username').value = '';
-  document.getElementById('login-password').value = '';
-  showLogin();
-}
-
-// ========== SYNC DATA (GET Request - CORS OK) ==========
+// ========== SYNC DATA ==========
 async function syncAllData() {
-  showLoading('Menyinkronkan data materi...');
+  if (!SHEET_URL) { alert('Masukkan URL Web App terlebih dahulu!'); return; }
+  
+  const syncStatus = document.getElementById('karyawan-sync-status');
+  if(syncStatus) syncStatus.style.display = 'flex';
+  
+  showLoading('Menyinkronkan data...');
   
   try {
     const response = await fetch(`${SHEET_URL}?action=getAllData&_=${Date.now()}`, { method: 'GET' });
     const data = await response.json();
     
     if (data.success) {
+      karyawanList = data.karyawan || [];
       materiList = data.materi || [];
-      localStorage.setItem('trainup_materi_cache', JSON.stringify(materiList));
+      
+      localStorage.setItem('trainup_master_data', JSON.stringify({ karyawan: karyawanList, materi: materiList }));
+      
+      populateKaryawanDropdown();
       populateMateriGrid();
-      console.log(`✅ Sync berhasil: ${materiList.length} materi`);
+      updateConfigStatus(true);
+      document.getElementById('cfg-status-txt').textContent = 'Data tersinkron';
+      alert(`✅ Berhasil sync: ${karyawanList.length} karyawan, ${materiList.length} materi`);
     } else {
-      throw new Error(data.error);
+      throw new Error(data.error || 'Unknown error');
     }
   } catch (err) {
     console.error('Sync error:', err);
-    const cached = localStorage.getItem('trainup_materi_cache');
+    const cached = localStorage.getItem('trainup_master_data');
     if (cached) {
-      materiList = JSON.parse(cached);
+      const data = JSON.parse(cached);
+      karyawanList = data.karyawan || [];
+      materiList = data.materi || [];
+      populateKaryawanDropdown();
       populateMateriGrid();
       showError('⚠️ Menggunakan data cached (offline mode)');
     } else {
-      showError('Gagal sync data.');
+      showError('Gagal sync data. Periksa koneksi internet.');
     }
   } finally {
     hideLoading();
+    if(syncStatus) syncStatus.style.display = 'none';
   }
+}
+
+function populateKaryawanDropdown() {
+  const select = document.getElementById('inp-nama-select');
+  if (!select) return;
+  select.innerHTML = '<option value="">— Pilih Nama —</option>';
+  karyawanList.forEach(k => {
+    const option = document.createElement('option');
+    option.value = k.nama;
+    option.textContent = `${k.nama} (${k.id || '-'})`;
+    option.dataset.id = k.id;
+    option.dataset.dept = k.departemen;
+    option.dataset.jabatan = k.jabatan;
+    select.appendChild(option);
+  });
+  
+  select.onchange = function() {
+    const selected = select.options[select.selectedIndex];
+    if (selected.value) {
+      document.getElementById('inp-id').value = selected.dataset.id || '';
+      document.getElementById('inp-dept').value = selected.dataset.dept || '';
+      document.getElementById('inp-jabatan').value = selected.dataset.jabatan || '';
+    } else {
+      document.getElementById('inp-id').value = '';
+      document.getElementById('inp-dept').value = '';
+      document.getElementById('inp-jabatan').value = '';
+    }
+  };
 }
 
 function populateMateriGrid() {
@@ -281,7 +138,7 @@ function populateMateriGrid() {
   if (!container) return;
   
   if (!materiList.length) {
-    container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);">Belum ada materi. Periksa sheet "Materi" di Google Sheets.</div>';
+    container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);">Belum ada materi. Sinkronkan data terlebih dahulu.</div>';
     return;
   }
   
@@ -377,8 +234,9 @@ function submitKuis() {
 
 function showResult(benar, total) {
   const skor = Math.round(benar/total*100);
-  const nama = currentUser?.nama || 'User';
-  const dept = currentUser?.departemen || '-';
+  const namaSelect = document.getElementById('inp-nama-select');
+  const nama = namaSelect.options[namaSelect.selectedIndex]?.value || 'Unknown';
+  const dept = document.getElementById('inp-dept').value;
   
   document.getElementById('result-nama-info').innerHTML = `${escapeHtml(nama)} · ${escapeHtml(dept)} · Modul: ${escapeHtml(selectedMateriObj?.judul)}`;
   document.getElementById('st-benar').textContent = benar;
@@ -406,7 +264,8 @@ function showResult(benar, total) {
 }
 
 function goStep(n) {
-  if (n===3 && !selectedMateriObj) { alert('Pilih materi terlebih dahulu!'); return; }
+  if (n===2 && (!document.getElementById('inp-nama-select').value || !document.getElementById('inp-dept').value)) { alert('Pilih karyawan terlebih dahulu!'); return; }
+  if (n===3 && !selectedMateriObj) { alert('Pilih materi!'); return; }
   if (n===3) loadMateri();
   if (n===4) loadKuis();
   
@@ -438,38 +297,43 @@ function updateProgress() {
 
 function toggleCheck(el){ el.classList.toggle('checked'); }
 function cetakSertifikat(){ window.print(); }
-function resetApp(){ 
-  selectedMateriObj = null;
-  quizAnswers = {};
-  quizSubmitted = false;
-  goStep(1);
+function resetApp(){ location.reload(); }
+
+function validateSheetUrlLive() {
+  const url = document.getElementById('cfg-url-input').value.trim();
+  const feedback = document.getElementById('url-feedback');
+  if(url && !url.startsWith('https://script.google.com/')) feedback.innerHTML = '❌ URL tidak valid';
+  else feedback.innerHTML = url ? '✅ Format URL valid' : '';
 }
 
-// ========== INITIAL LOAD ==========
-window.addEventListener('DOMContentLoaded', async () => {
-  const savedUser = localStorage.getItem('trainup_user');
-  if (savedUser) {
-    currentUser = JSON.parse(savedUser);
-    document.getElementById('inp-nama').value = currentUser.nama || '';
-    document.getElementById('inp-id').value = currentUser.id || '';
-    document.getElementById('inp-dept').value = currentUser.departemen || '';
-    document.getElementById('inp-jabatan').value = currentUser.jabatan || '';
-    document.getElementById('user-nama-display').textContent = currentUser.nama || currentUser.username;
-    document.getElementById('user-role-display').textContent = currentUser.role || 'user';
-    document.getElementById('user-dept-display').textContent = currentUser.departemen || '';
-    
-    document.getElementById('auth-section').style.display = 'none';
-    document.getElementById('main-app').style.display = 'block';
-    
-    const cached = localStorage.getItem('trainup_materi_cache');
-    if (cached) {
-      materiList = JSON.parse(cached);
-      populateMateriGrid();
-    }
-    syncAllData();
-  } else {
-    document.getElementById('auth-section').style.display = 'block';
-    document.getElementById('main-app').style.display = 'none';
-    showLogin();
+function simpanConfig() {
+  const val = document.getElementById('cfg-url-input').value.trim();
+  if(!val.startsWith('https://script.google.com/')) { alert('URL tidak valid'); return; }
+  localStorage.setItem('trainup_sheet_url', val);
+  location.reload();
+}
+
+function updateConfigStatus(ok) {
+  const dot = document.getElementById('cfg-dot'), txt = document.getElementById('cfg-status-txt');
+  if(ok && SHEET_URL) { dot.style.background='var(--green)'; txt.textContent='Tersambung'; }
+  else { dot.style.background='var(--amber)'; txt.textContent='Belum sinkron'; }
+}
+
+function toggleConfig() {
+  const body = document.getElementById('config-body');
+  const arrow = document.getElementById('config-arrow');
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  arrow.style.transform = isOpen ? 'rotate(180deg)' : 'rotate(0deg)';
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  if(SHEET_URL) { 
+    document.getElementById('cfg-url-input').value = SHEET_URL; 
+    updateConfigStatus(true); 
+    syncAllData(); 
+  } else { 
+    populateMateriGrid(); 
   }
+  document.getElementById('config-body').style.display = 'block';
 });

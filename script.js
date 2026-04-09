@@ -1,14 +1,13 @@
 // ========== HARDCODE URL APPS SCRIPT ==========
 const SHEET_URL = 'https://script.google.com/macros/s/AKfycbw1YNt07oc2OSEv-r2EcSKfcHaPLhRENvChKEyG8uEDD-KUuLWkYZxIYGD51UjeeU4d6w/exec';
 
-// ========== DATA STORE ==========
+// ========== GLOBAL VARIABLES ==========
 let materiList = [];
-let karyawanList = [];
 let selectedMateriObj = null;
 let currentStep = 1, quizAnswers = {}, quizSubmitted = false;
-let isLoading = false;
+let currentUser = null;
 
-// Tampilkan loading state
+// ========== LOADING UTILITY ==========
 function showLoading(message = 'Memuat data...') {
   let loader = document.getElementById('global-loader');
   if (!loader) {
@@ -29,7 +28,27 @@ function hideLoading() {
   if (loader) loader.style.display = 'none';
 }
 
-// Render ikon (support gambar dari Google Drive)
+function showError(msg) {
+  const errorDiv = document.getElementById('auth-error');
+  if (errorDiv) {
+    errorDiv.textContent = msg;
+    errorDiv.style.display = 'block';
+    setTimeout(() => errorDiv.style.display = 'none', 3000);
+  } else {
+    alert(msg);
+  }
+}
+
+function showSuccess(msg) {
+  const successDiv = document.getElementById('auth-success');
+  if (successDiv) {
+    successDiv.textContent = msg;
+    successDiv.style.display = 'block';
+    setTimeout(() => successDiv.style.display = 'none', 3000);
+  }
+}
+
+// ========== RENDER IKON ==========
 function renderIcon(iconValue) {
   if (!iconValue) return '<span style="font-size: 30px;">📘</span>';
   
@@ -68,9 +87,145 @@ function escapeHtml(str) {
   });
 }
 
+// ========== LOGIN & REGISTER ==========
+async function doLogin() {
+  const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value;
+  
+  if (!username || !password) {
+    showError('Username dan password harus diisi!');
+    return;
+  }
+  
+  showLoading('Login...');
+  
+  try {
+    const response = await fetch(SHEET_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'login',
+        username: username,
+        password: password
+      })
+    });
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      currentUser = result.data;
+      localStorage.setItem('trainup_user', JSON.stringify(currentUser));
+      showLoginSuccess();
+    } else {
+      showError(result.message || 'Login gagal!');
+    }
+  } catch (err) {
+    console.error(err);
+    showError('Gagal terhubung ke server. Periksa koneksi internet.');
+  } finally {
+    hideLoading();
+  }
+}
+
+async function doRegister() {
+  const username = document.getElementById('reg-username').value.trim();
+  const password = document.getElementById('reg-password').value;
+  const nama = document.getElementById('reg-nama').value.trim();
+  const id = document.getElementById('reg-id').value.trim();
+  const dept = document.getElementById('reg-dept').value.trim();
+  const jabatan = document.getElementById('reg-jabatan').value.trim();
+  
+  if (!username || !password || !nama || !id || !dept || !jabatan) {
+    showError('Semua field harus diisi!');
+    return;
+  }
+  
+  if (password.length < 4) {
+    showError('Password minimal 4 karakter!');
+    return;
+  }
+  
+  showLoading('Mendaftarkan akun...');
+  
+  try {
+    const response = await fetch(SHEET_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'register',
+        username: username,
+        password: password,
+        nama: nama,
+        id: id,
+        departemen: dept,
+        jabatan: jabatan,
+        role: 'user'
+      })
+    });
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      showSuccess('Registrasi berhasil! Silakan login.');
+      showLogin();
+      document.getElementById('login-username').value = username;
+    } else {
+      showError(result.message || 'Registrasi gagal!');
+    }
+  } catch (err) {
+    console.error(err);
+    showError('Gagal terhubung ke server.');
+  } finally {
+    hideLoading();
+  }
+}
+
+function showLogin() {
+  document.getElementById('login-form').style.display = 'block';
+  document.getElementById('register-form').style.display = 'none';
+  document.getElementById('auth-error').style.display = 'none';
+  document.getElementById('auth-success').style.display = 'none';
+}
+
+function showRegister() {
+  document.getElementById('login-form').style.display = 'none';
+  document.getElementById('register-form').style.display = 'block';
+  document.getElementById('auth-error').style.display = 'none';
+  document.getElementById('auth-success').style.display = 'none';
+}
+
+function showLoginSuccess() {
+  // Isi data user ke form identitas
+  document.getElementById('inp-nama').value = currentUser.nama || '';
+  document.getElementById('inp-id').value = currentUser.id || '';
+  document.getElementById('inp-dept').value = currentUser.departemen || '';
+  document.getElementById('inp-jabatan').value = currentUser.jabatan || '';
+  
+  document.getElementById('user-nama-display').textContent = currentUser.nama || currentUser.username;
+  document.getElementById('user-role-display').textContent = currentUser.role || 'user';
+  document.getElementById('user-dept-display').textContent = currentUser.departemen || '';
+  
+  // Tampilkan main app, sembunyikan auth section
+  document.getElementById('auth-section').style.display = 'none';
+  document.getElementById('main-app').style.display = 'block';
+  
+  // Load data materi
+  syncAllData();
+}
+
+function doLogout() {
+  localStorage.removeItem('trainup_user');
+  currentUser = null;
+  document.getElementById('auth-section').style.display = 'block';
+  document.getElementById('main-app').style.display = 'none';
+  document.getElementById('login-username').value = '';
+  document.getElementById('login-password').value = '';
+  showLogin();
+}
+
 // ========== SYNC DATA DARI GOOGLE SHEETS ==========
 async function syncAllData() {
-  showLoading('Menyinkronkan data dari Google Sheets...');
+  showLoading('Menyinkronkan data materi...');
   
   try {
     const controller = new AbortController();
@@ -85,72 +240,35 @@ async function syncAllData() {
     const data = await response.json();
     
     if (data.success) {
-      karyawanList = data.karyawan || [];
       materiList = data.materi || [];
       
-      // Simpan ke localStorage untuk下次加载更快
-      localStorage.setItem('trainup_master_data', JSON.stringify({ karyawan: karyawanList, materi: materiList }));
-      localStorage.setItem('trainup_master_time', Date.now().toString());
+      // Simpan ke cache
+      localStorage.setItem('trainup_materi_cache', JSON.stringify(materiList));
+      localStorage.setItem('trainup_materi_time', Date.now().toString());
       
-      populateKaryawanDropdown();
       populateMateriGrid();
-      
-      console.log(`✅ Sync berhasil: ${karyawanList.length} karyawan, ${materiList.length} materi`);
+      console.log(`✅ Sync berhasil: ${materiList.length} materi`);
       return true;
     } else {
       throw new Error(data.error || 'Unknown error');
     }
   } catch (err) {
     console.error('Sync error:', err);
-    if (err.name === 'AbortError') {
-      alert('⏰ Timeout! Cek koneksi internet atau URL Web App.');
-    } else {
-      alert('❌ Gagal sync data: ' + err.message);
-    }
     
-    // Coba pakai cache jika ada
-    const cached = localStorage.getItem('trainup_master_data');
+    // Coba pakai cache
+    const cached = localStorage.getItem('trainup_materi_cache');
     if (cached) {
-      const cachedData = JSON.parse(cached);
-      karyawanList = cachedData.karyawan || [];
-      materiList = cachedData.materi || [];
-      populateKaryawanDropdown();
+      materiList = JSON.parse(cached);
       populateMateriGrid();
-      alert('⚠️ Menggunakan data cached (offline mode)');
+      showError('⚠️ Menggunakan data cached (offline mode)');
       return true;
     }
+    
+    showError('Gagal sync data. Periksa koneksi internet.');
     return false;
   } finally {
     hideLoading();
   }
-}
-
-function populateKaryawanDropdown() {
-  const select = document.getElementById('inp-nama-select');
-  if (!select) return;
-  select.innerHTML = '<option value="">— Pilih Nama —</option>';
-  karyawanList.forEach(k => {
-    const option = document.createElement('option');
-    option.value = k.nama;
-    option.textContent = `${k.nama} (${k.id || '-'})`;
-    option.dataset.id = k.id;
-    option.dataset.dept = k.departemen;
-    option.dataset.jabatan = k.jabatan;
-    select.appendChild(option);
-  });
-  
-  select.onchange = function() {
-    const selected = select.options[select.selectedIndex];
-    if (selected.value) {
-      document.getElementById('inp-id').value = selected.dataset.id || '';
-      document.getElementById('inp-dept').value = selected.dataset.dept || '';
-      document.getElementById('inp-jabatan').value = selected.dataset.jabatan || '';
-    } else {
-      document.getElementById('inp-id').value = '';
-      document.getElementById('inp-dept').value = '';
-      document.getElementById('inp-jabatan').value = '';
-    }
-  };
 }
 
 function populateMateriGrid() {
@@ -254,38 +372,50 @@ function submitKuis() {
 
 function showResult(benar, total) {
   const skor = Math.round(benar/total*100);
-  const namaSelect = document.getElementById('inp-nama-select');
-  const nama = namaSelect.options[namaSelect.selectedIndex]?.value || 'Unknown';
-  const dept = document.getElementById('inp-dept').value;
+  const nama = currentUser?.nama || 'User';
+  const dept = currentUser?.departemen || '-';
+  
   document.getElementById('result-nama-info').innerHTML = `${escapeHtml(nama)} · ${escapeHtml(dept)} · Modul: ${escapeHtml(selectedMateriObj?.judul)}`;
   document.getElementById('st-benar').textContent = benar;
   document.getElementById('st-salah').textContent = total - benar;
   document.getElementById('st-total').textContent = total;
   document.getElementById('score-val').textContent = skor;
+  
   const pass = skor >= 60;
   document.getElementById('result-title').innerHTML = skor>=80 ? '🎉 Lulus Pujian!' : (skor>=60 ? '✅ Lulus' : '📖 Perlu Belajar Lagi');
-  if(pass){ document.getElementById('cert-badge').style.display='inline-flex'; document.getElementById('btn-cetak').style.display='flex'; }
-  else { document.getElementById('cert-badge').style.display='none'; document.getElementById('btn-cetak').style.display='none'; }
+  document.getElementById('result-desc').innerHTML = pass ? 'Selamat! Anda telah menyelesaikan pelatihan.' : 'Jangan menyerah, pelajari lagi materinya.';
+  
+  if(pass){ 
+    document.getElementById('cert-badge').style.display='inline-flex'; 
+    document.getElementById('btn-cetak').style.display='flex'; 
+  } else { 
+    document.getElementById('cert-badge').style.display='none'; 
+    document.getElementById('btn-cetak').style.display='none'; 
+  }
+  
   setTimeout(() => {
     const circ = document.getElementById('score-circle');
     const offset = 364.4 - (364.4 * skor / 100);
     circ.style.strokeDashoffset = offset;
   }, 100);
-  kirimHasilKeSheet(benar, total, skor, nama, dept);
+  
+  kirimHasilKeSheet(benar, total, skor);
 }
 
-async function kirimHasilKeSheet(benar, total, skor, nama, dept) {
+async function kirimHasilKeSheet(benar, total, skor) {
+  if (!currentUser) return;
   try {
     await fetch(SHEET_URL, {
       method: 'POST',
       mode: 'no-cors',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        type: 'hasil',
-        nama: nama,
-        id_karyawan: document.getElementById('inp-id').value,
-        departemen: dept,
-        jabatan: document.getElementById('inp-jabatan').value,
+        action: 'hasil',
+        username: currentUser.username,
+        nama: currentUser.nama,
+        id_karyawan: currentUser.id,
+        departemen: currentUser.departemen,
+        jabatan: currentUser.jabatan,
         modul: selectedMateriObj?.judul,
         skor: skor,
         benar: benar,
@@ -293,19 +423,28 @@ async function kirimHasilKeSheet(benar, total, skor, nama, dept) {
         status: skor >= 60 ? 'LULUS' : 'TIDAK LULUS'
       })
     });
-  } catch(e) { console.error(e); }
+  } catch(e) { console.error('Gagal simpan hasil:', e); }
 }
 
+// ========== NAVIGATION ==========
 function goStep(n) {
-  if (n===2 && (!document.getElementById('inp-nama-select').value || !document.getElementById('inp-dept').value)) { alert('Pilih karyawan terlebih dahulu!'); return; }
-  if (n===3 && !selectedMateriObj) { alert('Pilih materi!'); return; }
+  if (n===3 && !selectedMateriObj) { alert('Pilih materi terlebih dahulu!'); return; }
   if (n===3) loadMateri();
   if (n===4) loadKuis();
-  document.querySelectorAll('.step-view').forEach(v=>v.classList.remove('active'));
+  
+  document.querySelectorAll('.step-view').forEach(v => v.classList.remove('active'));
   document.getElementById('view-'+n).classList.add('active');
   currentStep = n;
-  for(let i=1;i<=5;i++){ const el=document.getElementById('stp-'+i); el.classList.remove('active','done'); if(i<n) el.classList.add('done'); else if(i===n) el.classList.add('active'); }
-  window.scrollTo({top:0,behavior:'smooth'});
+  
+  for(let i=1; i<=5; i++){ 
+    const el = document.getElementById('stp-'+i); 
+    if(el) {
+      el.classList.remove('active','done'); 
+      if(i < n) el.classList.add('done'); 
+      else if(i === n) el.classList.add('active');
+    }
+  }
+  window.scrollTo({top: 0, behavior: 'smooth'});
 }
 
 function updateProgress() {
@@ -313,23 +452,50 @@ function updateProgress() {
   if(!box) return;
   const ratio = box.scrollTop / (box.scrollHeight - box.clientHeight);
   const pct = Math.min(100, Math.round(ratio*100));
-  document.getElementById('prog-fill').style.width = pct+'%';
-  document.getElementById('read-pct').textContent = pct+'%';
+  const progFill = document.getElementById('prog-fill');
+  const readPct = document.getElementById('read-pct');
+  if(progFill) progFill.style.width = pct+'%';
+  if(readPct) readPct.textContent = pct+'%';
 }
 
 function toggleCheck(el){ el.classList.toggle('checked'); }
 function cetakSertifikat(){ window.print(); }
 function resetApp(){ 
-  localStorage.removeItem('trainup_master_data');
-  localStorage.removeItem('trainup_master_time');
-  location.reload(); 
+  selectedMateriObj = null;
+  quizAnswers = {};
+  quizSubmitted = false;
+  goStep(1);
 }
 
-// Initial load - langsung sync dengan hardcode URL
+// ========== INITIAL LOAD ==========
 window.addEventListener('DOMContentLoaded', async () => {
-  // Sembunyikan config panel karena tidak perlu lagi
-  const configPanel = document.getElementById('config-panel');
-  if (configPanel) configPanel.style.display = 'none';
-  
-  await syncAllData();
+  // Cek apakah user sudah login sebelumnya
+  const savedUser = localStorage.getItem('trainup_user');
+  if (savedUser) {
+    currentUser = JSON.parse(savedUser);
+    document.getElementById('inp-nama').value = currentUser.nama || '';
+    document.getElementById('inp-id').value = currentUser.id || '';
+    document.getElementById('inp-dept').value = currentUser.departemen || '';
+    document.getElementById('inp-jabatan').value = currentUser.jabatan || '';
+    document.getElementById('user-nama-display').textContent = currentUser.nama || currentUser.username;
+    document.getElementById('user-role-display').textContent = currentUser.role || 'user';
+    document.getElementById('user-dept-display').textContent = currentUser.departemen || '';
+    
+    document.getElementById('auth-section').style.display = 'none';
+    document.getElementById('main-app').style.display = 'block';
+    
+    // Load cache materi dulu
+    const cached = localStorage.getItem('trainup_materi_cache');
+    if (cached) {
+      materiList = JSON.parse(cached);
+      populateMateriGrid();
+    }
+    
+    // Sync data terbaru di background
+    syncAllData();
+  } else {
+    document.getElementById('auth-section').style.display = 'block';
+    document.getElementById('main-app').style.display = 'none';
+    showLogin();
+  }
 });

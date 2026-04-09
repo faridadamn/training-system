@@ -84,19 +84,27 @@ function renderIcon(iconValue) {
 async function postToSheet(action, params) {
   const formData = new URLSearchParams();
   formData.append('action', action);
+
   for (const [key, value] of Object.entries(params)) {
     formData.append(key, value);
   }
-  
-  await fetch(SHEET_URL, {
+
+  const response = await fetch(SHEET_URL, {
     method: 'POST',
-    mode: 'no-cors',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
     body: formData.toString()
   });
-  
-  // Request terkirim, response tidak bisa dibaca karena no-cors
-  return true;
+
+  const text = await response.text();
+
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    console.error('Response bukan JSON:', text);
+    return { success: false, message: 'Response tidak valid' };
+  }
 }
 
 // ========== FUNGSI REGISTER (POST Form) ==========
@@ -151,59 +159,35 @@ async function doRegister() {
 async function doLogin() {
   const username = document.getElementById('login-username').value.trim();
   const password = document.getElementById('login-password').value;
-  
+
   if (!username || !password) {
     showError('Username dan password harus diisi!');
     return;
   }
-  
+
   showLoading('Login...');
-  
-  // Cek di localStorage dulu (untuk user yang sudah register)
-  const savedUser = localStorage.getItem('trainup_user');
-  if (savedUser) {
-    const user = JSON.parse(savedUser);
-    if (user.username === username) {
-      currentUser = user;
+
+  try {
+    const res = await postToSheet('login', { username, password });
+
+    if (res.success) {
+      currentUser = res.data; // ✅ INI YANG PENTING
+
+      localStorage.setItem('trainup_user', JSON.stringify(currentUser));
+
       showLoginSuccess();
       showSuccess('Login berhasil!');
-      hideLoading();
-      return;
+    } else {
+      showError(res.message || 'Login gagal');
     }
+
+  } catch (err) {
+    console.error(err);
+    showError('Gagal koneksi ke server');
+  } finally {
+    hideLoading();
   }
-  
-  // Jika tidak ditemukan, buat user sementara (untuk testing)
-  // Data tetap akan tersimpan di sheet saat register
-  currentUser = {
-    username: username,
-    nama: username,
-    id: 'EMP001',
-    departemen: 'IT',
-    jabatan: 'Staff',
-    role: 'user'
-  };
-  localStorage.setItem('trainup_user', JSON.stringify(currentUser));
-  showLoginSuccess();
-  showSuccess('Login berhasil (mode testing)');
-  
-  hideLoading();
 }
-
-// ========== DEMO LOGIN (Untuk testing tanpa register) ==========
-function demoLogin() {
-  currentUser = {
-    username: 'demo',
-    nama: 'Demo User',
-    id: 'DEMO001',
-    departemen: 'Information Technology',
-    jabatan: 'Staff',
-    role: 'user'
-  };
-  localStorage.setItem('trainup_user', JSON.stringify(currentUser));
-  showLoginSuccess();
-  showSuccess('Demo Login berhasil!');
-}
-
 function showLogin() {
   document.getElementById('login-form').style.display = 'block';
   document.getElementById('register-form').style.display = 'none';

@@ -318,7 +318,404 @@ function updateProgress() {
 }
 
 function toggleCheck(el){ el.classList.toggle('checked'); }
-function cetakSertifikat(){ window.print(); }
+function cetakSertifikat() {
+  const nama = document.getElementById('inp-nama-select').options[document.getElementById('inp-nama-select').selectedIndex]?.value || 'User';
+  const idKaryawan = document.getElementById('inp-id').value || '-';
+  const dept = document.getElementById('inp-dept').value || '-';
+  const jabatan = document.getElementById('inp-jabatan').value || '-';
+  const materi = selectedMateriObj?.judul || 'Materi';
+  const skor = document.getElementById('score-val').textContent;
+  const benar = document.getElementById('st-benar').textContent;
+  const salah = document.getElementById('st-salah').textContent;
+  const tanggal = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+  const sertifikatId = 'TRN-' + new Date().getFullYear() + '-' + Math.random().toString(36).substr(2, 6).toUpperCase();
+  
+  // Menentukan predikat berdasarkan skor
+  let predikat = '';
+  let warnaPredikat = '#4f8ef7';
+  if (skor >= 90) {
+    predikat = 'Dengan Pujian (Excellent)';
+    warnaPredikat = '#34d399';
+  } else if (skor >= 80) {
+    predikat = 'Sangat Memuaskan (Very Good)';
+    warnaPredikat = '#4f8ef7';
+  } else if (skor >= 70) {
+    predikat = 'Memuaskan (Good)';
+    warnaPredikat = '#fbbf24';
+  } else if (skor >= 60) {
+    predikat = 'Cukup (Satisfactory)';
+    warnaPredikat = '#f97316';
+  } else {
+    predikat = 'Perlu Perbaikan (Need Improvement)';
+    warnaPredikat = '#f87171';
+  }
+  
+  // HTML untuk sertifikat
+  const certHtml = `
+    <!DOCTYPE html>
+    <html lang="id">
+    <head>
+      <meta charset="UTF-8">
+      <title>Sertifikat Kelulusan - ${escapeHtml(nama)}</title>
+      <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+      <style>
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+        }
+        
+        body {
+          background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+          font-family: 'DM Sans', sans-serif;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 100vh;
+          padding: 40px;
+        }
+        
+        .certificate {
+          width: 880px;
+          background: white;
+          border-radius: 24px;
+          position: relative;
+          overflow: hidden;
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        }
+        
+        .certificate::before {
+          content: '';
+          position: absolute;
+          top: 16px;
+          left: 16px;
+          right: 16px;
+          bottom: 16px;
+          border: 2px solid rgba(79, 142, 247, 0.2);
+          border-radius: 16px;
+          pointer-events: none;
+          z-index: 1;
+        }
+        
+        .cert-header {
+          background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+          padding: 40px 40px 30px;
+          text-align: center;
+          position: relative;
+        }
+        
+        .cert-header::after {
+          content: '';
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          height: 4px;
+          background: linear-gradient(90deg, #4f8ef7, #a78bfa, #34d399, #fbbf24);
+        }
+        
+        .logo {
+          font-size: 56px;
+          margin-bottom: 12px;
+        }
+        
+        .company {
+          font-family: 'Syne', sans-serif;
+          font-size: 14px;
+          letter-spacing: 4px;
+          text-transform: uppercase;
+          color: #94a3b8;
+          margin-bottom: 16px;
+        }
+        
+        .cert-title {
+          font-family: 'Syne', sans-serif;
+          font-size: 42px;
+          font-weight: 800;
+          color: white;
+          letter-spacing: 2px;
+        }
+        
+        .cert-subtitle {
+          font-size: 14px;
+          color: #94a3b8;
+          margin-top: 8px;
+        }
+        
+        .cert-body {
+          padding: 50px 60px;
+          text-align: center;
+        }
+        
+        .awarded-to {
+          font-size: 14px;
+          color: #64748b;
+          text-transform: uppercase;
+          letter-spacing: 3px;
+          margin-bottom: 16px;
+        }
+        
+        .recipient-name {
+          font-family: 'Syne', sans-serif;
+          font-size: 48px;
+          font-weight: 800;
+          color: #1e293b;
+          margin-bottom: 8px;
+          background: linear-gradient(135deg, #1e293b, #4f8ef7);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+        }
+        
+        .recipient-info {
+          display: flex;
+          justify-content: center;
+          gap: 32px;
+          margin: 20px 0 30px;
+          flex-wrap: wrap;
+        }
+        
+        .info-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          background: #f1f5f9;
+          padding: 8px 20px;
+          border-radius: 40px;
+          font-size: 13px;
+          color: #475569;
+        }
+        
+        .info-item span:first-child {
+          font-weight: 600;
+          color: #4f8ef7;
+        }
+        
+        .cert-message {
+          font-size: 15px;
+          color: #475569;
+          line-height: 1.8;
+          margin: 30px 0 20px;
+          border-top: 1px solid #e2e8f0;
+          border-bottom: 1px solid #e2e8f0;
+          padding: 25px 0;
+        }
+        
+        .module-name {
+          font-family: 'Syne', sans-serif;
+          font-size: 20px;
+          font-weight: 700;
+          color: #4f8ef7;
+          margin: 15px 0;
+          background: #eff6ff;
+          display: inline-block;
+          padding: 8px 28px;
+          border-radius: 40px;
+        }
+        
+        .score-section {
+          display: flex;
+          justify-content: center;
+          gap: 40px;
+          margin: 25px 0;
+          align-items: center;
+        }
+        
+        .score-circle {
+          width: 100px;
+          height: 100px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, #4f8ef7, #a78bfa);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-direction: column;
+          color: white;
+        }
+        
+        .score-value {
+          font-family: 'Syne', sans-serif;
+          font-size: 32px;
+          font-weight: 800;
+          line-height: 1;
+        }
+        
+        .score-label {
+          font-size: 11px;
+          opacity: 0.8;
+        }
+        
+        .stats {
+          text-align: left;
+        }
+        
+        .stats div {
+          margin-bottom: 8px;
+        }
+        
+        .predikat {
+          background: ${warnaPredikat}15;
+          border: 1px solid ${warnaPredikat}40;
+          color: ${warnaPredikat};
+          padding: 8px 24px;
+          border-radius: 40px;
+          font-size: 13px;
+          font-weight: 600;
+          display: inline-block;
+          margin-top: 10px;
+        }
+        
+        .cert-footer {
+          background: #f8fafc;
+          padding: 25px 40px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          border-top: 1px solid #e2e8f0;
+          font-size: 11px;
+          color: #94a3b8;
+        }
+        
+        .signature {
+          text-align: center;
+        }
+        
+        .signature-line {
+          width: 180px;
+          height: 2px;
+          background: #cbd5e1;
+          margin: 20px auto 8px;
+        }
+        
+        .btn-print, .btn-download {
+          position: fixed;
+          bottom: 30px;
+          background: #4f8ef7;
+          color: white;
+          border: none;
+          padding: 12px 24px;
+          border-radius: 40px;
+          font-family: 'DM Sans', sans-serif;
+          font-weight: 600;
+          cursor: pointer;
+          box-shadow: 0 4px 14px rgba(79, 142, 247, 0.4);
+          transition: all 0.2s;
+          z-index: 100;
+        }
+        
+        .btn-print {
+          right: 30px;
+        }
+        
+        .btn-download {
+          left: 30px;
+          background: #10b981;
+          box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
+        }
+        
+        .btn-print:hover, .btn-download:hover {
+          transform: translateY(-2px);
+        }
+        
+        @media print {
+          body {
+            background: white;
+            padding: 0;
+          }
+          .certificate {
+            box-shadow: none;
+            margin: 0;
+            width: 100%;
+          }
+          .btn-print, .btn-download {
+            display: none;
+          }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="certificate" id="certificate">
+        <div class="cert-header">
+          <div class="logo">🎓</div>
+          <div class="company">TRAINUP LEARNING MANAGEMENT SYSTEM</div>
+          <div class="cert-title">SERTIFIKAT KELULUSAN</div>
+          <div class="cert-subtitle">CERTIFICATE OF COMPLETION</div>
+        </div>
+        
+        <div class="cert-body">
+          <div class="awarded-to">DIBERIKAN KEPADA</div>
+          <div class="recipient-name">${escapeHtml(nama)}</div>
+          
+          <div class="recipient-info">
+            <div class="info-item"><span>🆔</span> ID: ${escapeHtml(idKaryawan)}</div>
+            <div class="info-item"><span>🏢</span> ${escapeHtml(dept)}</div>
+            <div class="info-item"><span>📌</span> ${escapeHtml(jabatan)}</div>
+          </div>
+          
+          <div class="cert-message">
+            <div>Telah berhasil menyelesaikan program pelatihan</div>
+            <div class="module-name">📘 ${escapeHtml(materi)}</div>
+            <div>dengan hasil sebagai berikut:</div>
+          </div>
+          
+          <div class="score-section">
+            <div class="score-circle">
+              <div class="score-value">${skor}</div>
+              <div class="score-label">NILAI</div>
+            </div>
+            <div class="stats">
+              <div>✅ <strong>Jawaban Benar:</strong> ${benar}</div>
+              <div>❌ <strong>Jawaban Salah:</strong> ${salah}</div>
+            </div>
+          </div>
+          
+          <div class="predikat">🏆 ${predikat}</div>
+        </div>
+        
+        <div class="cert-footer">
+          <div>
+            <div>Tanggal Terbit</div>
+            <strong>${tanggal}</strong>
+          </div>
+          <div class="signature">
+            <div>Kepala Departemen HRD</div>
+            <div class="signature-line"></div>
+            <div>_________________________</div>
+            <div style="margin-top: 4px;">Dr. Sarah Wijaya, S.Psi., M.M.</div>
+          </div>
+          <div>
+            <div>ID Sertifikat</div>
+            <strong>${sertifikatId}</strong>
+          </div>
+        </div>
+      </div>
+      
+      <button class="btn-print" onclick="window.print()">🖨️ Cetak / Print</button>
+      <button class="btn-download" id="downloadPdfBtn">📥 Download sebagai PDF</button>
+      
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+      <script>
+        document.getElementById('downloadPdfBtn').addEventListener('click', function() {
+          const element = document.getElementById('certificate');
+          const opt = {
+            margin: [0.3, 0.3, 0.3, 0.3],
+            filename: 'Sertifikat_${escapeHtml(nama).replace(/ /g, '_')}_${escapeHtml(materi).replace(/ /g, '_')}.pdf',
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, letterRendering: true, useCORS: true },
+            jsPDF: { unit: 'in', format: 'a4', orientation: 'landscape' }
+          };
+          html2pdf().set(opt).from(element).save();
+        });
+      </script>
+    </body>
+    </html>
+  `;
+  
+  // Buka jendela baru
+  const win = window.open('', '_blank');
+  win.document.write(certHtml);
+  win.document.close();
+}
 function resetApp(){ 
   localStorage.removeItem('trainup_master_data');
   localStorage.removeItem('trainup_master_time');
